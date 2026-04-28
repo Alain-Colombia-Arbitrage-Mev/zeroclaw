@@ -7,16 +7,58 @@
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-/// Maximum auth attempts allowed within the sliding window.
-pub const MAX_ATTEMPTS: u32 = 10;
-/// Sliding window duration in seconds.
+/// Default maximum auth attempts allowed within the sliding window.
+///
+/// Override at runtime via `ZEROCLAW_AUTH_MAX_ATTEMPTS`.
+pub const MAX_ATTEMPTS: u32 = 60;
+/// Default sliding window duration in seconds.
+///
+/// Override at runtime via `ZEROCLAW_AUTH_WINDOW_SECS`.
 pub const WINDOW_SECS: u64 = 60;
-/// Lockout duration in seconds after exceeding [`MAX_ATTEMPTS`].
-pub const LOCKOUT_SECS: u64 = 300;
+/// Default lockout duration in seconds after exceeding the attempt limit.
+///
+/// Override at runtime via `ZEROCLAW_AUTH_LOCKOUT_SECS`.
+pub const LOCKOUT_SECS: u64 = 60;
 /// How often stale entries are swept from the map.
 const SWEEP_INTERVAL_SECS: u64 = 300;
+
+fn env_u32(name: &str, default: u32) -> u32 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+/// Effective max-attempts value, honouring `ZEROCLAW_AUTH_MAX_ATTEMPTS` override.
+///
+/// Resolved once on first call and cached for the process lifetime so tests
+/// using env-vars must set them before the first call.
+pub fn max_attempts() -> u32 {
+    static CACHED: OnceLock<u32> = OnceLock::new();
+    *CACHED.get_or_init(|| env_u32("ZEROCLAW_AUTH_MAX_ATTEMPTS", MAX_ATTEMPTS))
+}
+
+/// Effective sliding-window duration, honouring `ZEROCLAW_AUTH_WINDOW_SECS`.
+pub fn window_secs() -> u64 {
+    static CACHED: OnceLock<u64> = OnceLock::new();
+    *CACHED.get_or_init(|| env_u64("ZEROCLAW_AUTH_WINDOW_SECS", WINDOW_SECS))
+}
+
+/// Effective lockout duration, honouring `ZEROCLAW_AUTH_LOCKOUT_SECS`.
+pub fn lockout_secs() -> u64 {
+    static CACHED: OnceLock<u64> = OnceLock::new();
+    *CACHED.get_or_init(|| env_u64("ZEROCLAW_AUTH_LOCKOUT_SECS", LOCKOUT_SECS))
+}
 
 /// Error returned when a client exceeds the auth rate limit.
 #[derive(Debug, Clone)]
@@ -73,12 +115,14 @@ impl AuthRateLimiter {
         let mut inner = self.inner.lock();
         Self::maybe_sweep(&mut inner, now);
 
+        let lockout_secs = lockout_secs();
+
         // Check active lockout first.
         if let Some(&locked_at) = inner.lockouts.get(key) {
             let elapsed = now.duration_since(locked_at).as_secs();
-            if elapsed < LOCKOUT_SECS {
+            if elapsed < lockout_secs {
                 return Err(RateLimitError {
-                    retry_after_secs: LOCKOUT_SECS - elapsed,
+                    retry_after_secs: lockout_secs - elapsed,
                 });
             }
             // Lockout expired — remove it and let the attempt through.
@@ -87,14 +131,14 @@ impl AuthRateLimiter {
         }
 
         // Prune old timestamps for this key.
-        let window = Duration::from_secs(WINDOW_SECS);
+        let window = Duration::from_secs(window_secs());
         if let Some(timestamps) = inner.attempts.get_mut(key) {
             timestamps.retain(|t| now.duration_since(*t) < window);
-            if timestamps.len() >= MAX_ATTEMPTS as usize {
+            if timestamps.len() >= max_attempts() as usize {
                 // Trigger lockout.
                 inner.lockouts.insert(key.to_owned(), now);
                 return Err(RateLimitError {
-                    retry_after_secs: LOCKOUT_SECS,
+                    retry_after_secs: lockout_secs,
                 });
             }
         }
@@ -122,7 +166,7 @@ impl AuthRateLimiter {
         let now = Instant::now();
         let inner = self.inner.lock();
         if let Some(&locked_at) = inner.lockouts.get(key) {
-            return now.duration_since(locked_at).as_secs() < LOCKOUT_SECS;
+            return now.duration_since(locked_at).as_secs() < lockout_secs();
         }
         false
     }
@@ -134,8 +178,8 @@ impl AuthRateLimiter {
         }
         inner.last_sweep = now;
 
-        let lockout_dur = Duration::from_secs(LOCKOUT_SECS);
-        let window_dur = Duration::from_secs(WINDOW_SECS);
+        let lockout_dur = Duration::from_secs(lockout_secs());
+        let window_dur = Duration::from_secs(window_secs());
 
         inner
             .lockouts
@@ -161,13 +205,15 @@ mod tests {
     #[test]
     fn loopback_is_exempt() {
         let limiter = AuthRateLimiter::new();
-        for _ in 0..20 {
+        // Hammer well past the configured limit to prove loopback is exempt.
+        let beyond_limit = max_attempts() + 10;
+        for _ in 0..beyond_limit {
             assert!(limiter.check_rate_limit("127.0.0.1").is_ok());
             limiter.record_attempt("127.0.0.1");
         }
         assert!(!limiter.is_locked_out("127.0.0.1"));
 
-        for _ in 0..20 {
+        for _ in 0..beyond_limit {
             assert!(limiter.check_rate_limit("::1").is_ok());
             limiter.record_attempt("::1");
         }
@@ -177,8 +223,9 @@ mod tests {
     fn lockout_after_max_attempts() {
         let limiter = AuthRateLimiter::new();
         let key = "192.168.1.100";
+        let limit = max_attempts();
 
-        for _ in 0..MAX_ATTEMPTS {
+        for _ in 0..limit {
             assert!(limiter.check_rate_limit(key).is_ok());
             limiter.record_attempt(key);
         }
@@ -193,12 +240,21 @@ mod tests {
     fn under_limit_is_ok() {
         let limiter = AuthRateLimiter::new();
         let key = "10.0.0.1";
+        let limit = max_attempts();
 
-        for _ in 0..(MAX_ATTEMPTS - 1) {
+        for _ in 0..(limit - 1) {
             assert!(limiter.check_rate_limit(key).is_ok());
             limiter.record_attempt(key);
         }
         // Still under the limit.
         assert!(limiter.check_rate_limit(key).is_ok());
     }
+
+    // Lock in the new defaults so a regression that lowers them gets caught
+    // at compile time.
+    const _: () = {
+        assert!(MAX_ATTEMPTS >= 60);
+        assert!(WINDOW_SECS == 60);
+        assert!(LOCKOUT_SECS <= 60);
+    };
 }
