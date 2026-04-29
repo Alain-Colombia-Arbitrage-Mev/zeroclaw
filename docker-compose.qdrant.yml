@@ -1,0 +1,71 @@
+# Standalone Qdrant compose for the ZeroClaw vector memory backend.
+#
+# Use this when ZeroClaw itself runs natively (cargo run -- daemon) and
+# you only want to bring up Qdrant alongside it. If you also run
+# ZeroClaw in a container, merge this `qdrant` service into the main
+# `docker-compose.yml` so they share a network.
+#
+# Usage
+# -----
+#   docker compose -f docker-compose.qdrant.yml up -d
+#   # → Qdrant REST API on :6333, gRPC on :6334, dashboard on :6333/dashboard
+#
+# To stop and wipe data:
+#   docker compose -f docker-compose.qdrant.yml down -v
+#
+# Wire-up in `~/.zeroclaw/config.toml`
+# ------------------------------------
+#   [memory]
+#   backend = "qdrant"
+#   embedding_provider = "openai"
+#   embedding_model = "text-embedding-3-small"
+#
+#   [memory.qdrant]
+#   url = "http://localhost:6333"
+#   collection = "zeroclaw_memories"
+#   # api_key = "..."        # only needed for Qdrant Cloud
+#
+# Embeddings reuse your OpenRouter key — it speaks OpenAI's
+# `/v1/embeddings` shape. If you'd rather run embeddings locally, point
+# `embedding_provider = "ollama"` and start an Ollama instance with the
+# `nomic-embed-text` model.
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: zeroclaw-qdrant
+    restart: unless-stopped
+    ports:
+      # REST API used by the QdrantMemory backend.
+      - "${QDRANT_REST_PORT:-6333}:6333"
+      # gRPC port — unused by ZeroClaw today, exposed for tools like
+      # `qdrant-client-go` or the Qdrant CLI.
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    environment:
+      # Capped memory + threading; Qdrant scales linearly with RAM and
+      # cores so adjust to your host. The defaults are conservative for
+      # local dev (laptops with 16 GB).
+      QDRANT__SERVICE__MAX_REQUEST_SIZE_MB: "32"
+      QDRANT__STORAGE__PERFORMANCE__MAX_OPTIMIZATION_THREADS: "2"
+    volumes:
+      # Persist the on-disk store across container restarts.
+      - qdrant-data:/qdrant/storage
+      # Snapshot directory — Qdrant writes backups here when you call
+      # POST /snapshots. Mount it so they survive container removal.
+      - qdrant-snapshots:/qdrant/snapshots
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 128M
+
+volumes:
+  qdrant-data:
+  qdrant-snapshots:
