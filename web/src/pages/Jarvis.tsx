@@ -140,7 +140,12 @@ export default function Jarvis() {
       </button>
 
       <div className="flex flex-col items-center gap-8">
-        <JarvisOrb audioLevel={voice.audioLevel} mode={voice.mode} size={360} />
+        <JarvisOrb
+          audioLevel={voice.audioLevel}
+          audioBands={voice.audioBands}
+          mode={voice.mode}
+          size={360}
+        />
 
         <p
           className="text-sm tracking-wide uppercase"

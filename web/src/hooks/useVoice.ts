@@ -26,9 +26,20 @@ import {
 
 type VoiceMode = 'idle' | 'listening' | 'speaking' | 'thinking';
 
+/** Frequency-band breakdown of the live mic / synth signal, each in 0..1. */
+export interface AudioBands {
+  /** Low frequencies (~20–250 Hz). Drives sphere pulse, ring expansion. */
+  bass: number;
+  /** Mid frequencies (~250–4000 Hz). Drives particle agitation. */
+  mid: number;
+  /** High frequencies (~4000–20000 Hz). Drives sparkle / inner core flicker. */
+  treble: number;
+}
+
 interface UseVoiceResult {
   mode: VoiceMode;
   audioLevel: number;
+  audioBands: AudioBands;
   error: string | null;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<string | null>;
@@ -104,9 +115,12 @@ function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
   return voices.find((v) => v.lang.startsWith(langPrefix)) ?? voices[0];
 }
 
+const ZERO_BANDS: AudioBands = { bass: 0, mid: 0, treble: 0 };
+
 export function useVoice(): UseVoiceResult {
   const [mode, setMode] = useState<VoiceMode>('idle');
   const [audioLevel, setAudioLevel] = useState(0);
+  const [audioBands, setAudioBands] = useState<AudioBands>(ZERO_BANDS);
   const [error, setError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -131,6 +145,7 @@ export function useVoice(): UseVoiceResult {
     }
     analyserRef.current = null;
     setAudioLevel(0);
+    setAudioBands(ZERO_BANDS);
   }, []);
 
   const startMeter = useCallback((stream: MediaStream) => {
@@ -138,22 +153,52 @@ export function useVoice(): UseVoiceResult {
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.8;
     source.connect(analyser);
     audioContextRef.current = ctx;
     analyserRef.current = analyser;
 
-    const buf = new Uint8Array(analyser.fftSize);
+    // Time-domain buffer for the global RMS, frequency buffer for the 3 bands.
+    const timeBuf = new Uint8Array(analyser.fftSize);
+    const freqBuf = new Uint8Array(analyser.frequencyBinCount);
+    // ~22 kHz Nyquist / 512 bins ≈ 43 Hz per bin. Cut the bands at 250 Hz
+    // and 4 kHz to roughly match how the human ear segments them.
+    const sampleRate = ctx.sampleRate || 44100;
+    const binHz = sampleRate / 2 / analyser.frequencyBinCount;
+    const bassEnd = Math.min(analyser.frequencyBinCount, Math.floor(250 / binHz));
+    const midEnd = Math.min(analyser.frequencyBinCount, Math.floor(4000 / binHz));
+
     const tick = () => {
       const a = analyserRef.current;
       if (!a) return;
-      a.getByteTimeDomainData(buf);
+
+      a.getByteTimeDomainData(timeBuf);
       let sumSq = 0;
-      for (let i = 0; i < buf.length; i++) {
-        const v = (buf[i]! - 128) / 128;
+      for (let i = 0; i < timeBuf.length; i++) {
+        const v = (timeBuf[i]! - 128) / 128;
         sumSq += v * v;
       }
-      const rms = Math.sqrt(sumSq / buf.length);
+      const rms = Math.sqrt(sumSq / timeBuf.length);
       setAudioLevel(Math.min(1, rms * 3.2));
+
+      a.getByteFrequencyData(freqBuf);
+      let bassSum = 0;
+      let midSum = 0;
+      let trebleSum = 0;
+      for (let i = 0; i < bassEnd; i++) bassSum += freqBuf[i]!;
+      for (let i = bassEnd; i < midEnd; i++) midSum += freqBuf[i]!;
+      for (let i = midEnd; i < freqBuf.length; i++) trebleSum += freqBuf[i]!;
+      const bassN = Math.max(1, bassEnd);
+      const midN = Math.max(1, midEnd - bassEnd);
+      const trebleN = Math.max(1, freqBuf.length - midEnd);
+      // Normalise (byte 0..255) → 0..1, then bias up because mics rarely
+      // saturate the upper byte range and we want visible motion.
+      setAudioBands({
+        bass: Math.min(1, bassSum / bassN / 200),
+        mid: Math.min(1, midSum / midN / 180),
+        treble: Math.min(1, trebleSum / trebleN / 160),
+      });
+
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -310,7 +355,16 @@ export function useVoice(): UseVoiceResult {
         const elapsed = (performance.now() - start) / 1000;
         const phase = Math.min(1, elapsed / 0.4);
         const wobble = 0.55 + Math.sin(elapsed * 9) * 0.25;
-        setAudioLevel(phase * wobble);
+        const lvl = phase * wobble;
+        setAudioLevel(lvl);
+        // Synthesise plausible bands (the synthesizer doesn't expose
+        // amplitude, let alone spectrum) so the orb doesn't flatten
+        // out while speaking. Bass leads, mid follows, treble shimmers.
+        setAudioBands({
+          bass: Math.min(1, lvl * 1.05),
+          mid: Math.min(1, 0.4 + Math.sin(elapsed * 13) * 0.35 * phase),
+          treble: Math.min(1, 0.25 + Math.abs(Math.sin(elapsed * 21)) * 0.55 * phase),
+        });
         frame = requestAnimationFrame(tick);
       };
       frame = requestAnimationFrame(tick);
@@ -319,6 +373,7 @@ export function useVoice(): UseVoiceResult {
         speaking = false;
         cancelAnimationFrame(frame);
         setAudioLevel(0);
+        setAudioBands(ZERO_BANDS);
         setMode('idle');
         resolve();
       };
@@ -326,6 +381,7 @@ export function useVoice(): UseVoiceResult {
         speaking = false;
         cancelAnimationFrame(frame);
         setAudioLevel(0);
+        setAudioBands(ZERO_BANDS);
         setMode('idle');
         resolve();
       };
@@ -336,6 +392,7 @@ export function useVoice(): UseVoiceResult {
   const cancelSpeech = useCallback(() => {
     window.speechSynthesis?.cancel();
     setAudioLevel(0);
+    setAudioBands(ZERO_BANDS);
     setMode('idle');
   }, []);
 
@@ -366,6 +423,7 @@ export function useVoice(): UseVoiceResult {
   return {
     mode,
     audioLevel,
+    audioBands,
     error,
     startRecording,
     stopRecording,
