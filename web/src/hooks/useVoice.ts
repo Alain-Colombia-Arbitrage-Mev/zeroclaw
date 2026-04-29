@@ -1,22 +1,28 @@
 // Push-to-talk voice helpers for the Jarvis page.
 //
-// `useVoice` exposes:
-//   - startRecording / stopRecording: capture mic audio while the
-//     push-to-talk button is held. Returns the transcript via Whisper
-//     (or `null` if no key is configured / the request fails).
-//   - speak: TTS via the browser's SpeechSynthesis API, picking the
-//     best matching voice for the configured locale.
-//   - audioLevel: a 0..1 RMS read of the current input or output stream
-//     for the orb visualisation.
+// Two recording paths are supported:
 //
-// Whisper is called directly from the browser using the user-supplied
-// OpenAI key — the gateway is intentionally not proxied for this hop
-// to keep the daemon out of the audio path. If you need server-side
-// auditing of voice input, swap `transcribeWithWhisper` for a gateway
-// endpoint that forwards to your provider of choice.
+//   1. `browser` — Web Speech API (`SpeechRecognition`). Free, no key,
+//      no audio leaves the browser. Limited to Chrome/Edge/Safari and
+//      varies in quality by language.
+//
+//   2. `groq` / `openai` — capture audio with MediaRecorder and POST
+//      the blob to an OpenAI-compatible `/v1/audio/transcriptions`
+//      endpoint. Same wire format as Whisper, so adding more
+//      compatible providers later is a one-line config change.
+//
+// Speech synthesis always uses the browser's built-in SpeechSynthesis
+// API; no remote TTS is ever called from this hook.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getOpenAiKey, getPreferredVoiceLocale } from '../lib/jarvisSettings';
+import {
+  getPreferredVoiceLocale,
+  getSttApiKey,
+  getSttEndpoint,
+  getSttModel,
+  getSttProvider,
+  type SttProvider,
+} from '../lib/jarvisSettings';
 
 type VoiceMode = 'idle' | 'listening' | 'speaking' | 'thinking';
 
@@ -24,32 +30,58 @@ interface UseVoiceResult {
   mode: VoiceMode;
   audioLevel: number;
   error: string | null;
-  /** Begin capturing mic audio; resolves when recording is active. */
   startRecording: () => Promise<void>;
-  /** Stop capturing and return the Whisper transcript (or null on failure). */
   stopRecording: () => Promise<string | null>;
-  /** Speak text via the browser TTS, in the given language. */
   speak: (text: string, lang?: string) => Promise<void>;
-  /** Cancel any in-flight speech synthesis. */
   cancelSpeech: () => void;
   setMode: (m: VoiceMode) => void;
 }
 
-const WHISPER_ENDPOINT = 'https://api.openai.com/v1/audio/transcriptions';
-const WHISPER_MODEL = 'whisper-1';
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult:
+    | ((ev: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void)
+    | null;
+  onerror: ((ev: { error: string }) => void) | null;
+  onend: (() => void) | null;
+}
 
-async function transcribeWithWhisper(
+interface SpeechRecognitionCtor {
+  new (): SpeechRecognitionLike;
+}
+
+function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+async function transcribeRemote(
   blob: Blob,
-  apiKey: string,
-  language?: string,
+  provider: Exclude<SttProvider, 'browser'>,
+  language: string,
 ): Promise<string | null> {
+  const apiKey = getSttApiKey(provider);
+  if (!apiKey) {
+    throw new Error(`${provider} API key not configured — open settings to add one.`);
+  }
+  const endpoint = getSttEndpoint(provider);
+  const model = getSttModel(provider);
+
   const form = new FormData();
   form.append('file', blob, 'speech.webm');
-  form.append('model', WHISPER_MODEL);
+  form.append('model', model);
   if (language) form.append('language', language);
   form.append('response_format', 'json');
 
-  const res = await fetch(WHISPER_ENDPOINT, {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
@@ -57,7 +89,7 @@ async function transcribeWithWhisper(
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new Error(`Whisper error ${res.status}: ${detail || res.statusText}`);
+    throw new Error(`${provider} STT error ${res.status}: ${detail || res.statusText}`);
   }
   const data = (await res.json()) as { text?: string };
   return (data.text ?? '').trim() || null;
@@ -83,6 +115,10 @@ export function useVoice(): UseVoiceResult {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
+
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const browserTranscriptRef = useRef<string>('');
+  const providerRef = useRef<SttProvider>('browser');
 
   const stopMeter = useCallback(() => {
     if (rafRef.current !== null) {
@@ -117,7 +153,6 @@ export function useVoice(): UseVoiceResult {
         sumSq += v * v;
       }
       const rms = Math.sqrt(sumSq / buf.length);
-      // Map 0..0.5 RMS to 0..1 with a soft ceiling.
       setAudioLevel(Math.min(1, rms * 3.2));
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -126,6 +161,58 @@ export function useVoice(): UseVoiceResult {
 
   const startRecording = useCallback(async () => {
     setError(null);
+    const provider = getSttProvider();
+    providerRef.current = provider;
+
+    if (provider === 'browser') {
+      const Ctor = getSpeechRecognitionCtor();
+      if (!Ctor) {
+        const msg =
+          'Web Speech API not supported in this browser. Switch STT provider to Groq or OpenAI in settings.';
+        setError(msg);
+        throw new Error(msg);
+      }
+
+      // SpeechRecognition manages the mic itself, but we open a parallel
+      // MediaStream just to drive the orb meter.
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        startMeter(stream);
+      } catch {
+        // Meter is best-effort; recognition can still run without it.
+      }
+
+      const recognition = new Ctor();
+      recognition.lang = getPreferredVoiceLocale();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      browserTranscriptRef.current = '';
+      recognition.onresult = (ev) => {
+        let finalText = '';
+        for (let i = 0; i < ev.results.length; i++) {
+          const r = ev.results[i];
+          if (r && r.isFinal) finalText += r[0].transcript;
+        }
+        if (finalText) browserTranscriptRef.current = finalText.trim();
+      };
+      recognition.onerror = (ev) => {
+        if (ev.error !== 'no-speech' && ev.error !== 'aborted') {
+          setError(`Recognition error: ${ev.error}`);
+        }
+      };
+      recognition.onend = () => {
+        // No auto-restart — stopRecording reads the buffered transcript.
+      };
+
+      recognition.start();
+      recognitionRef.current = recognition;
+      setMode('listening');
+      return;
+    }
+
+    // Remote provider path — record to a blob, upload on stop.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -147,11 +234,31 @@ export function useVoice(): UseVoiceResult {
   }, [startMeter]);
 
   const stopRecording = useCallback(async (): Promise<string | null> => {
-    const recorder = mediaRecorderRef.current;
+    const provider = providerRef.current;
     const stream = streamRef.current;
-    if (!recorder || recorder.state === 'inactive') {
-      return null;
+
+    if (provider === 'browser') {
+      const recognition = recognitionRef.current;
+      if (!recognition) return null;
+      try {
+        recognition.stop();
+      } catch {
+        // already stopped
+      }
+      recognitionRef.current = null;
+      stream?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      stopMeter();
+      // Give onresult a tick to flush any pending final segment.
+      await new Promise((r) => setTimeout(r, 80));
+      const text = browserTranscriptRef.current.trim();
+      browserTranscriptRef.current = '';
+      setMode('idle');
+      return text || null;
     }
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return null;
 
     const stopped = new Promise<Blob>((resolve) => {
       recorder.onstop = () => {
@@ -166,24 +273,16 @@ export function useVoice(): UseVoiceResult {
     streamRef.current = null;
     mediaRecorderRef.current = null;
     stopMeter();
-
     setMode('thinking');
-
-    const apiKey = getOpenAiKey();
-    if (!apiKey) {
-      setError('OpenAI API key not configured — open settings to add one.');
-      setMode('idle');
-      return null;
-    }
 
     try {
       const localePref = getPreferredVoiceLocale();
       const lang = localePref.split('-')[0] ?? localePref;
-      const text = await transcribeWithWhisper(blob, apiKey, lang);
+      const text = await transcribeRemote(blob, provider, lang);
       setMode('idle');
       return text;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Whisper transcription failed');
+      setError(err instanceof Error ? err.message : 'Transcription failed');
       setMode('idle');
       return null;
     }
@@ -205,9 +304,6 @@ export function useVoice(): UseVoiceResult {
     return new Promise((resolve) => {
       let frame = 0;
       let speaking = true;
-      // Approximate audio envelope from elapsed time — there's no way
-      // to read the synthesizer's amplitude on the web, so we ramp up
-      // for a sentence and fade out at the end.
       const start = performance.now();
       const tick = () => {
         if (!speaking) return;
@@ -257,6 +353,11 @@ export function useVoice(): UseVoiceResult {
     return () => {
       mediaRecorderRef.current?.stop();
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // noop
+      }
       stopMeter();
       window.speechSynthesis?.cancel();
     };

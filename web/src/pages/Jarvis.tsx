@@ -21,11 +21,18 @@ import { useVoice } from '../hooks/useVoice';
 import { useWebSocket } from '../hooks/useWebSocket';
 import {
   getJarvisGateway,
-  getOpenAiKey,
   getPreferredVoiceLocale,
+  getSttApiKey,
+  getSttEndpoint,
+  getSttProvider,
   setJarvisGateway,
-  setOpenAiKey,
   setPreferredVoiceLocale,
+  setSttApiKey,
+  setSttEndpoint,
+  setSttProvider,
+  STT_PROVIDER_DEFAULTS,
+  SUPPORTED_STT_PROVIDERS,
+  type SttProvider,
 } from '../lib/jarvisSettings';
 import { useLocale } from '../lib/i18n';
 
@@ -181,12 +188,36 @@ export default function Jarvis() {
 function JarvisSettingsModal({ onClose }: { onClose: () => void }) {
   const { t } = useLocale();
   const [gateway, setGateway] = useState(() => getJarvisGateway());
-  const [apiKey, setApiKey] = useState(() => getOpenAiKey());
+  const [provider, setProvider] = useState<SttProvider>(() => getSttProvider());
+  const [apiKey, setApiKey] = useState(() => getSttApiKey(getSttProvider()));
+  const [endpoint, setEndpoint] = useState(() => getSttEndpoint(getSttProvider()));
   const [voiceLocale, setVoiceLocale] = useState(() => getPreferredVoiceLocale());
+
+  // When the user picks a different provider, swap key + endpoint to that
+  // provider's stored values so each one keeps its own credentials.
+  const handleProviderChange = (next: SttProvider) => {
+    // Persist the in-progress entries for the *current* provider before switching.
+    if (provider !== 'browser') {
+      setSttApiKey(provider, apiKey);
+      setSttEndpoint(provider, endpoint);
+    }
+    setProvider(next);
+    setApiKey(getSttApiKey(next));
+    setEndpoint(getSttEndpoint(next));
+  };
+
+  const providerMeta = SUPPORTED_STT_PROVIDERS.find((p) => p.value === provider);
+  const needsKey = providerMeta?.needsKey ?? false;
+  const defaultEndpoint =
+    provider !== 'browser' ? STT_PROVIDER_DEFAULTS[provider].endpoint : '';
 
   const handleSave = () => {
     setJarvisGateway(gateway);
-    setOpenAiKey(apiKey);
+    setSttProvider(provider);
+    if (provider !== 'browser') {
+      setSttApiKey(provider, apiKey);
+      setSttEndpoint(provider, endpoint);
+    }
     setPreferredVoiceLocale(voiceLocale);
     onClose();
     // Reload so the new gateway URL is used by the WebSocket client.
@@ -227,20 +258,55 @@ function JarvisSettingsModal({ onClose }: { onClose: () => void }) {
 
         <label className="block mb-3">
           <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--pc-text-muted)' }}>
-            {t('jarvis.settings_openai_key')}
+            {t('jarvis.settings_stt_provider')}
           </span>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-..."
-            className="input-electric w-full px-3 py-2 mt-1 text-sm font-mono"
-            autoComplete="off"
-          />
-          <span className="text-xs block mt-1" style={{ color: 'var(--pc-text-muted)' }}>
-            {t('jarvis.settings_openai_hint')}
-          </span>
+          <select
+            value={provider}
+            onChange={(e) => handleProviderChange(e.target.value as SttProvider)}
+            className="input-electric w-full px-3 py-2 mt-1 text-sm"
+          >
+            {SUPPORTED_STT_PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
         </label>
+
+        {needsKey && (
+          <>
+            <label className="block mb-3">
+              <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--pc-text-muted)' }}>
+                {t('jarvis.settings_stt_key')}
+              </span>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={provider === 'groq' ? 'gsk_...' : 'sk-...'}
+                className="input-electric w-full px-3 py-2 mt-1 text-sm font-mono"
+                autoComplete="off"
+              />
+              <span className="text-xs block mt-1" style={{ color: 'var(--pc-text-muted)' }}>
+                {t('jarvis.settings_stt_key_hint')}
+              </span>
+            </label>
+
+            <label className="block mb-3">
+              <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--pc-text-muted)' }}>
+                {t('jarvis.settings_stt_endpoint')}
+              </span>
+              <input
+                type="text"
+                value={endpoint}
+                onChange={(e) => setEndpoint(e.target.value)}
+                placeholder={defaultEndpoint}
+                className="input-electric w-full px-3 py-2 mt-1 text-sm font-mono"
+              />
+              <span className="text-xs block mt-1" style={{ color: 'var(--pc-text-muted)' }}>
+                {t('jarvis.settings_stt_endpoint_hint')}
+              </span>
+            </label>
+          </>
+        )}
 
         <label className="block mb-4">
           <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--pc-text-muted)' }}>
