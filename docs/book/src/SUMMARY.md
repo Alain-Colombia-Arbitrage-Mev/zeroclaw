@@ -16,6 +16,8 @@
 - [Windows](./setup/windows.md)
 - [Docker & containers](./setup/container.md)
 - [Service management](./setup/service.md)
+- [Qdrant memory backend](./setup/qdrant.md)
+- [FalkorDB knowledge graph](./setup/falkordb.md)
 
 # Architecture
 

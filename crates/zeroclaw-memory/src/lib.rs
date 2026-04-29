@@ -26,6 +26,8 @@ pub mod embeddings;
 pub mod hygiene;
 pub mod importance;
 pub mod knowledge_graph;
+#[cfg(feature = "memory-falkordb")]
+pub mod knowledge_graph_falkordb;
 #[cfg(feature = "memory-postgres")]
 pub mod knowledge_graph_pg;
 pub mod lucid;
