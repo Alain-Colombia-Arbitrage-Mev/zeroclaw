@@ -819,24 +819,66 @@ pub fn all_tools_with_runtime(
         }
     }
 
-    // Knowledge graph tool
+    // Knowledge graph tool — backend dispatch.
     if root_config.knowledge.enabled {
-        let db_path_str = root_config.knowledge.db_path.replace(
-            '~',
-            &directories::UserDirs::new()
-                .map(|u| u.home_dir().to_string_lossy().to_string())
-                .unwrap_or_else(|| ".".to_string()),
-        );
-        let db_path = std::path::PathBuf::from(&db_path_str);
-        match zeroclaw_memory::knowledge_graph::KnowledgeGraph::new(
-            &db_path,
-            root_config.knowledge.max_nodes,
-        ) {
-            Ok(graph) => {
-                tool_arcs.push(Arc::new(KnowledgeTool::new(Arc::new(graph))));
+        let backend = root_config.knowledge.backend.trim().to_ascii_lowercase();
+        match backend.as_str() {
+            "falkordb" => {
+                #[cfg(feature = "memory-falkordb")]
+                {
+                    use zeroclaw_memory::knowledge_graph_falkordb::FalkorDbKnowledgeGraph;
+                    use zeroclaw_tools::knowledge_tool_falkor::KnowledgeToolFalkor;
+                    let url = &root_config.knowledge.falkordb.url;
+                    let graph_name = &root_config.knowledge.falkordb.graph;
+                    match FalkorDbKnowledgeGraph::connect(url, graph_name).await {
+                        Ok(graph) => {
+                            tracing::info!(
+                                "📚 FalkorDB knowledge graph connected (url={url}, graph={graph_name})"
+                            );
+                            tool_arcs.push(Arc::new(KnowledgeToolFalkor::new(Arc::new(graph))));
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "FalkorDB knowledge graph disabled due to connect error \
+                                 (url={url}): {e}"
+                            );
+                        }
+                    }
+                }
+                #[cfg(not(feature = "memory-falkordb"))]
+                {
+                    tracing::warn!(
+                        "knowledge.backend = \"falkordb\" requested but this build was \
+                         compiled without `memory-falkordb`. Rebuild with \
+                         `--features memory-falkordb` or switch to backend = \"sqlite\"."
+                    );
+                }
             }
-            Err(e) => {
-                tracing::warn!("knowledge graph disabled due to init error: {e}");
+            "sqlite" | "" => {
+                let db_path_str = root_config.knowledge.db_path.replace(
+                    '~',
+                    &directories::UserDirs::new()
+                        .map(|u| u.home_dir().to_string_lossy().to_string())
+                        .unwrap_or_else(|| ".".to_string()),
+                );
+                let db_path = std::path::PathBuf::from(&db_path_str);
+                match zeroclaw_memory::knowledge_graph::KnowledgeGraph::new(
+                    &db_path,
+                    root_config.knowledge.max_nodes,
+                ) {
+                    Ok(graph) => {
+                        tool_arcs.push(Arc::new(KnowledgeTool::new(Arc::new(graph))));
+                    }
+                    Err(e) => {
+                        tracing::warn!("knowledge graph disabled due to init error: {e}");
+                    }
+                }
+            }
+            other => {
+                tracing::warn!(
+                    "Unknown knowledge.backend '{other}', expected 'sqlite' or 'falkordb'. \
+                     Knowledge tool disabled."
+                );
             }
         }
     }
