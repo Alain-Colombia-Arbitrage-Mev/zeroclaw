@@ -1,0 +1,68 @@
+# Standalone FalkorDB compose for the ZeroClaw knowledge-graph backend.
+#
+# FalkorDB is a Redis module that adds graph + Cypher support; the
+# wire protocol stays plain Redis, which is why ZeroClaw connects with
+# the standard `redis-rs` client (no FalkorDB-specific SDK needed).
+#
+# Usage
+# -----
+#   docker compose -f docker-compose.falkordb.yml up -d
+#   # → FalkorDB Redis on :6379, browser at http://localhost:3000
+#
+# Stop and wipe data:
+#   docker compose -f docker-compose.falkordb.yml down -v
+#
+# Wire-up in `~/.zeroclaw/config.toml`
+# ------------------------------------
+# The FalkorDB knowledge-graph backend is opt-in and feature-gated. To
+# use it you need to (a) build ZeroClaw with the `memory-falkordb`
+# feature and (b) point the daemon at the URL below. Example:
+#
+#   cargo run --bin zeroclaw --features memory-falkordb -- daemon
+#
+# Followed by a config block similar to:
+#
+#   [memory.knowledge_graph]
+#   backend  = "falkordb"
+#   url      = "redis://localhost:6379"
+#   graph    = "zeroclaw_kg"
+#
+# The schema dispatch for `[memory.knowledge_graph]` lands in a
+# follow-up PR — for now, instantiate `FalkorDbKnowledgeGraph::connect`
+# directly from your integration code or extension.
+
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: zeroclaw-falkordb
+    restart: unless-stopped
+    ports:
+      # Redis protocol — what zeroclaw-memory connects to.
+      - "${FALKORDB_PORT:-6379}:6379"
+      # FalkorDB Browser (web UI for Cypher exploration).
+      - "${FALKORDB_BROWSER_PORT:-3000}:3000"
+    environment:
+      # Memory cap for graph operations. The default is generous; tune
+      # down on small hosts or up if you load many subgraphs.
+      FALKORDB_ARGS: "MAX_QUEUED_QUERIES 50"
+    volumes:
+      # Persist the AOF / RDB snapshot across restarts.
+      - falkordb-data:/data
+    healthcheck:
+      # Use redis-cli (it ships with the FalkorDB image) to PING the
+      # Redis port. Avoids the "no shell in distroless" pitfall the
+      # Qdrant compose runs into.
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 64M
+
+volumes:
+  falkordb-data:
