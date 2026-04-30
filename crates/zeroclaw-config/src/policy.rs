@@ -184,28 +184,59 @@ pub struct SecurityPolicy {
 pub(crate) fn default_allowed_commands() -> Vec<String> {
     #[allow(unused_mut)]
     let mut cmds = vec![
+        // ── Repo / VCS ──────────────────────────────────────
         "git".into(),
-        "npm".into(),
+        "gh".into(),
+        // ── Build / task runners ────────────────────────────
+        "just".into(),
+        "make".into(),
+        // ── Rust toolchain ──────────────────────────────────
         "cargo".into(),
+        "rustc".into(),
+        "rustup".into(),
+        "rtk".into(),
+        // ── JS / TS toolchain ───────────────────────────────
+        "npm".into(),
+        "pnpm".into(),
+        "bun".into(),
+        "node".into(),
+        "deno".into(),
+        "tsc".into(),
+        "vite".into(),
+        "vitest".into(),
+        "jest".into(),
+        "playwright".into(),
+        // ── Python toolchain ────────────────────────────────
+        "python".into(),
+        "python3".into(),
+        "pip".into(),
+        "uv".into(),
+        "ruff".into(),
+        "mypy".into(),
+        // ── Go ──────────────────────────────────────────────
+        "go".into(),
+        // ── Repo-side tools (project specific) ──────────────
+        "ruflo".into(),
+        "graphify".into(),
+        "gstack".into(),
+        // ── Read-only filesystem inspection ─────────────────
         "ls".into(),
         "cat".into(),
         "grep".into(),
+        "rg".into(),
         "find".into(),
         "echo".into(),
         "pwd".into(),
         "wc".into(),
         "head".into(),
         "tail".into(),
+        // ── System info (read-only) ─────────────────────────
         "date".into(),
         "df".into(),
         "du".into(),
         "uname".into(),
         "uptime".into(),
         "hostname".into(),
-        "python".into(),
-        "python3".into(),
-        "pip".into(),
-        "node".into(),
     ];
     // `free` is Linux-only; it does not exist on macOS or other BSDs.
     #[cfg(target_os = "linux")]
@@ -220,22 +251,54 @@ pub(crate) fn default_allowed_commands() -> Vec<String> {
 #[cfg(target_os = "windows")]
 pub(crate) fn default_allowed_commands() -> Vec<String> {
     vec![
-        // Cross-platform tools
+        // ── Repo / VCS ──────────────────────────────────────
         "git".into(),
-        "npm".into(),
+        "gh".into(),
+        // ── Build / task runners ────────────────────────────
+        "just".into(),
+        "make".into(),
+        // ── Rust toolchain ──────────────────────────────────
         "cargo".into(),
-        "echo".into(),
-        // Windows-native equivalents
+        "rustc".into(),
+        "rustup".into(),
+        "rtk".into(),
+        // ── JS / TS toolchain ───────────────────────────────
+        "npm".into(),
+        "pnpm".into(),
+        "bun".into(),
+        "node".into(),
+        "deno".into(),
+        "tsc".into(),
+        "vite".into(),
+        "vitest".into(),
+        "jest".into(),
+        "playwright".into(),
+        // ── Python toolchain ────────────────────────────────
+        "python".into(),
+        "python3".into(),
+        "pip".into(),
+        "uv".into(),
+        "ruff".into(),
+        "mypy".into(),
+        // ── Go ──────────────────────────────────────────────
+        "go".into(),
+        // ── Repo-side tools (project specific) ──────────────
+        "ruflo".into(),
+        "graphify".into(),
+        "gstack".into(),
+        // ── Windows-native equivalents ──────────────────────
         "dir".into(),
         "type".into(),
         "findstr".into(),
         "where".into(),
         "more".into(),
         "date".into(),
-        // Unix commands (available via Git for Windows / MSYS2)
+        "echo".into(),
+        // ── Unix tools (via Git for Windows / MSYS2 / WSL) ─
         "ls".into(),
         "cat".into(),
         "grep".into(),
+        "rg".into(),
         "find".into(),
         "pwd".into(),
         "wc".into(),
@@ -246,10 +309,6 @@ pub(crate) fn default_allowed_commands() -> Vec<String> {
         "uname".into(),
         "uptime".into(),
         "hostname".into(),
-        "python".into(),
-        "python3".into(),
-        "pip".into(),
-        "node".into(),
     ]
 }
 
@@ -1796,6 +1855,51 @@ mod tests {
         assert!(p.is_command_allowed("cat file.txt"));
         assert!(p.is_command_allowed("grep -r pattern ."));
         assert!(p.is_command_allowed("date"));
+    }
+
+    #[test]
+    fn allowlist_includes_coding_and_repo_admin_tools() {
+        // Locks in the curated coding / repo-admin allowlist so a future
+        // accidental trim of `default_allowed_commands` is caught here.
+        let p = default_policy();
+
+        // Repo / VCS
+        assert!(p.is_command_allowed("gh pr list"));
+
+        // Build / task runners
+        assert!(p.is_command_allowed("just check"));
+        assert!(p.is_command_allowed("make build"));
+
+        // Rust toolchain
+        assert!(p.is_command_allowed("rustc --version"));
+        assert!(p.is_command_allowed("rustup show"));
+        assert!(p.is_command_allowed("rtk cargo build"));
+
+        // JS / TS toolchain
+        assert!(p.is_command_allowed("pnpm install"));
+        assert!(p.is_command_allowed("bun test"));
+        assert!(p.is_command_allowed("deno run task"));
+        assert!(p.is_command_allowed("tsc -b"));
+        assert!(p.is_command_allowed("vite build"));
+        assert!(p.is_command_allowed("vitest run"));
+        assert!(p.is_command_allowed("jest --ci"));
+        assert!(p.is_command_allowed("playwright test"));
+
+        // Python toolchain
+        assert!(p.is_command_allowed("uv sync"));
+        assert!(p.is_command_allowed("ruff check"));
+        assert!(p.is_command_allowed("mypy ."));
+
+        // Go
+        assert!(p.is_command_allowed("go test ./..."));
+
+        // Repo-side tools
+        assert!(p.is_command_allowed("ruflo"));
+        assert!(p.is_command_allowed("graphify"));
+        assert!(p.is_command_allowed("gstack push"));
+
+        // ripgrep
+        assert!(p.is_command_allowed("rg pattern"));
     }
 
     #[test]
