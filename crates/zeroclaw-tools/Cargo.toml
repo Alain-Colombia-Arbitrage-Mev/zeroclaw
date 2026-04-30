@@ -47,6 +47,10 @@ default = []
 browser-native = ["dep:fantoccini"]
 rag-pdf = ["dep:pdf-extract"]
 probe = ["dep:probe-rs"]
+# Compile in the FalkorDB-backed knowledge tool variant.
+# Forwards to `zeroclaw-memory/memory-falkordb` so the redis client and
+# the FalkorDbKnowledgeGraph implementation are pulled in.
+memory-falkordb = ["zeroclaw-memory/memory-falkordb"]
 
 [dev-dependencies]
 zeroclaw-infra.workspace = true

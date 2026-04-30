@@ -3405,6 +3405,22 @@ impl Default for GoogleWorkspaceConfig {
 // ── Knowledge ───────────────────────────────────────────────────
 
 /// Knowledge graph configuration for capturing and reusing expertise.
+/// FalkorDB connection settings for the knowledge graph
+/// (`[knowledge.falkordb]` section).
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "knowledge.falkordb"]
+pub struct FalkorDbKnowledgeConfig {
+    /// Redis URL FalkorDB is listening on. Default: `redis://localhost:6379`.
+    /// Falls back to `FALKORDB_URL` env var when empty.
+    #[serde(default = "default_falkordb_url")]
+    pub url: String,
+    /// Graph name passed to every `GRAPH.QUERY` call. Multiple graphs in
+    /// the same Redis are isolated by FalkorDB.
+    #[serde(default = "default_falkordb_graph")]
+    pub graph: String,
+}
+
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
 #[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
@@ -3413,7 +3429,14 @@ pub struct KnowledgeConfig {
     /// Enable the knowledge graph tool. Default: false.
     #[serde(default)]
     pub enabled: bool,
-    /// Path to the knowledge graph SQLite database.
+    /// Storage backend for the knowledge graph: `"sqlite"` (default,
+    /// embedded, no extra services) or `"falkordb"` (Cypher-native, runs
+    /// as a Redis module — requires the `memory-falkordb` Cargo feature
+    /// at build time and a reachable instance at runtime).
+    #[serde(default = "default_knowledge_backend")]
+    pub backend: String,
+    /// Path to the knowledge graph SQLite database. Used when
+    /// `backend = "sqlite"`.
     #[serde(default = "default_knowledge_db_path")]
     pub db_path: String,
     /// Maximum number of knowledge nodes. Default: 100000.
@@ -3428,6 +3451,15 @@ pub struct KnowledgeConfig {
     /// Allow searching across workspaces (disabled by default for client data isolation).
     #[serde(default)]
     pub cross_workspace_search: bool,
+    /// FalkorDB-specific connection settings. Ignored when
+    /// `backend != "falkordb"`.
+    #[serde(default)]
+    #[nested]
+    pub falkordb: FalkorDbKnowledgeConfig,
+}
+
+fn default_knowledge_backend() -> String {
+    "sqlite".into()
 }
 
 fn default_knowledge_db_path() -> String {
@@ -3438,15 +3470,34 @@ fn default_knowledge_max_nodes() -> usize {
     100_000
 }
 
+fn default_falkordb_url() -> String {
+    "redis://localhost:6379".into()
+}
+
+fn default_falkordb_graph() -> String {
+    "zeroclaw_kg".into()
+}
+
+impl Default for FalkorDbKnowledgeConfig {
+    fn default() -> Self {
+        Self {
+            url: default_falkordb_url(),
+            graph: default_falkordb_graph(),
+        }
+    }
+}
+
 impl Default for KnowledgeConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            backend: default_knowledge_backend(),
             db_path: default_knowledge_db_path(),
             max_nodes: default_knowledge_max_nodes(),
             auto_capture: false,
             suggest_on_query: true,
             cross_workspace_search: false,
+            falkordb: FalkorDbKnowledgeConfig::default(),
         }
     }
 }

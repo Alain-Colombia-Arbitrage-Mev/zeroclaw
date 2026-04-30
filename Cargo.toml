@@ -304,6 +304,10 @@ channel-feishu = ["channel-lark"]
 whatsapp-web = ["zeroclaw-channels/whatsapp-web"]
 voice-wake = ["zeroclaw-channels/voice-wake"]
 memory-postgres = ["zeroclaw-memory/memory-postgres"]
+memory-falkordb = [
+    "zeroclaw-memory/memory-falkordb",
+    "zeroclaw-tools?/memory-falkordb",
+]
 
 # Backends and platform flags — each forwards to ONE crate
 observability-prometheus = [
