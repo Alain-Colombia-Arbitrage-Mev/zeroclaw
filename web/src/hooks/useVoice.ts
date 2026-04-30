@@ -95,13 +95,122 @@ async function transcribeRemote(
   return (data.text ?? '').trim() || null;
 }
 
+/**
+ * Pick the best available voice for a target locale.
+ *
+ * Selection order:
+ *   1. Local/native voice with exact `lang` match — these are bundled
+ *      with the OS, sound the most natural, and have the lowest
+ *      latency (no network).
+ *   2. Local/native voice with the same language prefix (e.g. `es-MX`
+ *      when the user asked for `es-ES`).
+ *   3. Any voice (remote/cloud included) with exact match.
+ *   4. Any voice with the same language prefix.
+ *   5. First voice in the catalogue, as a last resort.
+ *
+ * `localService` is true for OS-bundled voices and false for remote
+ * (Google's "Network synthesis", Microsoft Edge's online voices, …).
+ * Local voices are usually higher quality on Mac/iOS and on Windows
+ * (SAPI5 / Edge premium); the cloud fallback only matters on Linux
+ * where bundled voices are scarce.
+ */
 function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
   const voices = window.speechSynthesis?.getVoices() ?? [];
   if (voices.length === 0) return undefined;
+  const langPrefix = lang.split('-')[0] ?? lang;
+
+  const exactLocal = voices.find((v) => v.lang === lang && v.localService);
+  if (exactLocal) return exactLocal;
+
+  const prefixLocal = voices.find(
+    (v) => v.lang.startsWith(langPrefix) && v.localService,
+  );
+  if (prefixLocal) return prefixLocal;
+
   const exact = voices.find((v) => v.lang === lang);
   if (exact) return exact;
-  const langPrefix = lang.split('-')[0] ?? lang;
+
   return voices.find((v) => v.lang.startsWith(langPrefix)) ?? voices[0];
+}
+
+/**
+ * Strip markdown, code fences, and other characters that the agent
+ * model uses for written formatting but that
+ * `SpeechSynthesis` would otherwise read aloud literally ("hash hash
+ * sub-agent" instead of pausing past the heading).
+ *
+ * The transformation is intentionally conservative — we never drop
+ * letters or numbers, only formatting punctuation and control chars.
+ * The goal is "the same paragraph a human would read aloud", not a
+ * normalized search string.
+ */
+export function cleanForSpeech(raw: string): string {
+  if (!raw) return '';
+  let text = raw;
+
+  // Collapse fenced code blocks: keep the inner code, drop the fences.
+  // The model rarely puts essential prose inside fences, but if it does
+  // we keep the words for the synth to read.
+  text = text.replace(/```[a-zA-Z0-9_-]*\n?/g, ' ').replace(/```/g, ' ');
+
+  // Inline code: keep the symbol, drop the back-ticks.
+  text = text.replace(/`([^`]*)`/g, '$1');
+
+  // Markdown images: read the alt text only — the URL is noise on TTS.
+  text = text.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1');
+
+  // Markdown links: keep the visible label, drop the URL.
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
+
+  // ATX headings (`#`, `##`, `###` …) at the start of a line.
+  text = text.replace(/^[ \t]*#{1,6}[ \t]+/gm, '');
+
+  // Setext headings — the underline rows of `===` / `---`.
+  text = text.replace(/^[ \t]*[=\-]{3,}[ \t]*$/gm, '');
+
+  // Block-level list markers at the start of a line: `-`, `*`, `+`,
+  // and ordered `1.` / `1)` items.
+  text = text.replace(/^[ \t]*([*\-+]|\d+[.)])[ \t]+/gm, '');
+
+  // Block-quote angle brackets at the start of a line.
+  text = text.replace(/^[ \t]*>+[ \t]?/gm, '');
+
+  // Pipe-table dividers (`| --- | --- |`).
+  text = text.replace(/^\s*\|?(\s*:?-+:?\s*\|)+\s*$/gm, '');
+
+  // Pipe-table column separators — keep the cell text, drop the bars.
+  text = text.replace(/[ \t]*\|[ \t]*/g, ', ');
+
+  // Bold / italic / strike markers: `**word**`, `*word*`, `_word_`,
+  // `~~word~~`. The character outside the regex stays.
+  text = text.replace(/(\*\*|__)(.*?)\1/g, '$2');
+  text = text.replace(/(\*|_)(?!\s)([^*_]+?)(?<!\s)\1/g, '$2');
+  text = text.replace(/~~(.*?)~~/g, '$1');
+
+  // Bare URLs: skip them. `https://example.com/path?x=1` read aloud
+  // is unusable; the agent has the link in the on-screen transcript
+  // anyway.
+  text = text.replace(/https?:\/\/[^\s)]+/g, '');
+
+  // Emoji and other symbol pictographs — keep ASCII letters and CJK,
+  // drop the rest. Most TTS voices say "smiling face emoji" out loud
+  // for `:-)` / `🙂`, which is exactly the behaviour the user
+  // complained about.
+  text = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+
+  // Stray HTML tags the model occasionally inserts.
+  text = text.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+
+  // Hash / at / dollar / caret / tilde used as decorators rather than
+  // as part of a word. We drop them only when surrounded by
+  // whitespace or punctuation so identifiers like `H2O` and prices
+  // like `$5` survive.
+  text = text.replace(/(^|\s)[#@^~](\s|$)/g, '$1$2');
+
+  // Collapse repeated whitespace introduced by all the above.
+  text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+
+  return text;
 }
 
 export function useVoice(): UseVoiceResult {
@@ -289,16 +398,22 @@ export function useVoice(): UseVoiceResult {
   }, [stopMeter]);
 
   const speak = useCallback(async (text: string, lang?: string): Promise<void> => {
-    if (!text.trim() || !window.speechSynthesis) return;
+    // Strip markdown / code fences / control chars before handing the
+    // string to SpeechSynthesis, otherwise the synth reads symbols
+    // ("hash hash designer sub-agent…") aloud.
+    const speakable = cleanForSpeech(text);
+    if (!speakable || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     setMode('speaking');
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(speakable);
     const targetLang = lang ?? getPreferredVoiceLocale();
     utterance.lang = targetLang;
     const voice = pickVoice(targetLang);
     if (voice) utterance.voice = voice;
-    utterance.rate = 1.0;
+    // Slightly slower than 1.0 reads more naturally on most native
+    // voices — full speed sounds clipped on long sentences.
+    utterance.rate = 0.95;
     utterance.pitch = 1.0;
 
     return new Promise((resolve) => {
