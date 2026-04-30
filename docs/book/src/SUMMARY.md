@@ -17,6 +17,7 @@
 - [Docker & containers](./setup/container.md)
 - [Service management](./setup/service.md)
 - [Coder sub-agent](./setup/coder-agent.md)
+- [Designer sub-agent + Pencil.dev](./setup/designer-agent.md)
 
 # Architecture
 
