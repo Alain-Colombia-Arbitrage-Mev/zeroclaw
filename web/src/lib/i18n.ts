@@ -463,6 +463,25 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.logs': 'Logs',
     'nav.doctor': 'Doctor',
     'nav.canvas': 'Canvas',
+    'nav.jarvis': 'Jarvis',
+
+    // Jarvis voice page
+    'jarvis.status_ready': 'Ready',
+    'jarvis.status_listening': 'Listening...',
+    'jarvis.status_transcribing': 'Transcribing...',
+    'jarvis.status_speaking': 'Speaking...',
+    'jarvis.status_disconnected': 'Connecting to gateway...',
+    'jarvis.hold_to_talk': 'Hold to talk',
+    'jarvis.release_to_send': 'Release to send',
+    'jarvis.you': 'You',
+    'jarvis.settings_open': 'Settings',
+    'jarvis.settings_title': 'Jarvis Settings',
+    'jarvis.settings_gateway': 'Gateway URL',
+    'jarvis.settings_openai_key': 'OpenAI API key',
+    'jarvis.settings_openai_hint': 'Used for Whisper speech-to-text. Stored only in this browser.',
+    'jarvis.settings_voice_locale': 'Voice language',
+    'jarvis.settings_save': 'Save',
+    'jarvis.settings_cancel': 'Cancel',
 
     // Dashboard
     'dashboard.title': 'Dashboard',
@@ -3562,6 +3581,25 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.logs': 'Registros',
     'nav.doctor': 'Diagnóstico',
     'nav.canvas': 'Lienzo',
+    'nav.jarvis': 'Jarvis',
+
+    // Jarvis voice page
+    'jarvis.status_ready': 'Listo',
+    'jarvis.status_listening': 'Escuchando...',
+    'jarvis.status_transcribing': 'Transcribiendo...',
+    'jarvis.status_speaking': 'Hablando...',
+    'jarvis.status_disconnected': 'Conectando al gateway...',
+    'jarvis.hold_to_talk': 'Mantén presionado para hablar',
+    'jarvis.release_to_send': 'Suelta para enviar',
+    'jarvis.you': 'Tú',
+    'jarvis.settings_open': 'Ajustes',
+    'jarvis.settings_title': 'Ajustes de Jarvis',
+    'jarvis.settings_gateway': 'URL del gateway',
+    'jarvis.settings_openai_key': 'API key de OpenAI',
+    'jarvis.settings_openai_hint': 'Se usa para transcripción Whisper. Solo se guarda en este navegador.',
+    'jarvis.settings_voice_locale': 'Idioma de voz',
+    'jarvis.settings_save': 'Guardar',
+    'jarvis.settings_cancel': 'Cancelar',
 
     // Dashboard
     'dashboard.title': 'Panel de control',
