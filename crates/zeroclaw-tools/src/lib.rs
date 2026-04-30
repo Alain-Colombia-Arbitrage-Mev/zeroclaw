@@ -34,6 +34,7 @@ pub mod http_request;
 pub mod image_gen;
 pub mod image_info;
 pub mod jira_tool;
+pub mod kg_extract;
 pub mod knowledge_tool;
 #[cfg(feature = "memory-falkordb")]
 pub mod knowledge_tool_falkor;
