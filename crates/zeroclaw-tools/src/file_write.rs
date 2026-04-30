@@ -259,6 +259,7 @@ mod tests {
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn file_write_normalizes_workspace_prefixed_relative_path() {
         let root = std::env::temp_dir().join("zeroclaw_test_file_write_workspace_prefixed");
@@ -330,6 +331,7 @@ mod tests {
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn file_write_blocks_absolute_path() {
         let tool = FileWriteTool::new(test_security(std::env::temp_dir()));

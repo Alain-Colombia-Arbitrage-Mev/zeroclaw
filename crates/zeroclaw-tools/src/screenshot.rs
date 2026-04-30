@@ -316,6 +316,7 @@ mod tests {
         assert!(result.error.unwrap().contains("unsafe for shell execution"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn screenshot_command_contains_output_path() {
         let cmd = ScreenshotTool::screenshot_command("/tmp/my_screenshot.png").unwrap();

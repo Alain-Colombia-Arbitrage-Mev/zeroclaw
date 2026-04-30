@@ -480,6 +480,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("prompt"));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn rejects_path_outside_workspace() {
         let tool = ClaudeCodeRunnerTool::new(

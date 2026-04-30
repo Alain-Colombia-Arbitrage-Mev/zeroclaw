@@ -317,6 +317,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("prompt"));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn codex_cli_rejects_path_outside_workspace() {
         let tool = CodexCliTool::new(test_security(AutonomyLevel::Full), test_config());

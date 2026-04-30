@@ -293,6 +293,11 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 
+    // The default forbidden-path list is OS-specific (`/etc/...` on Unix,
+    // `C:\Windows\...` on Windows). The tests that hard-code Unix paths
+    // are therefore Unix-only — equivalent Windows coverage lives in the
+    // shell tool's tests under `crates/zeroclaw-runtime/src/tools/shell.rs`.
+    #[cfg(unix)]
     #[tokio::test]
     async fn path_guard_blocks_forbidden_path() {
         let (inner, counter) = CountingTool::new();
@@ -323,6 +328,7 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn path_guard_custom_extractor() {
         let (inner, counter) = CountingTool::new();
@@ -343,6 +349,7 @@ mod tests {
 
     // ── Composition test ──────────────────────────────────────────────────────
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn composed_wrappers_both_enforce() {
         // RateLimited(PathGuarded(CountingTool)) — path check happens inside
