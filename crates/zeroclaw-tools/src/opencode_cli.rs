@@ -312,6 +312,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("prompt"));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn opencode_cli_rejects_path_outside_workspace() {
         let tool = OpenCodeCliTool::new(test_security(AutonomyLevel::Full), test_config());

@@ -417,6 +417,11 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("prompt"));
     }
 
+    // Uses Unix path `/etc` as the "outside-workspace" probe; on Windows
+    // that's neither absolute nor on the forbidden list, so the equivalent
+    // Windows assertion would need a `C:\Windows`-shaped path. Skipped on
+    // Windows; coverage is preserved on Unix CI runners.
+    #[cfg(unix)]
     #[tokio::test]
     async fn claude_code_rejects_path_outside_workspace() {
         let tool = ClaudeCodeTool::new(test_security(AutonomyLevel::Full), test_config());
