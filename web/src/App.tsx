@@ -228,6 +228,9 @@ function AppContent() {
     <DraftContext.Provider value={draftStore}>
       <LocaleContext.Provider value={{ locale, setAppLocale }}>
         <Routes>
+          {/* Jarvis is rendered outside the Layout chrome so the orb
+              can occupy the full viewport. */}
+          <Route path="/jarvis" element={<Jarvis />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/agent" element={<AgentChat />} />
@@ -241,7 +244,6 @@ function AppContent() {
             <Route path="/doctor" element={<Doctor />} />
             <Route path="/pairing" element={<Pairing />} />
             <Route path="/canvas" element={<Canvas />} />
-            <Route path="/jarvis" element={<Jarvis />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

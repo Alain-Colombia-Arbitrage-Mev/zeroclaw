@@ -42,6 +42,7 @@ const PROVIDER_KEY = 'zeroclaw_jarvis_stt_provider';
 const STT_KEY_PREFIX = 'zeroclaw_jarvis_stt_key_';
 const STT_URL_PREFIX = 'zeroclaw_jarvis_stt_url_';
 const LEGACY_OPENAI_KEY = 'zeroclaw_openai_api_key';
+const SPLINE_SCENE_KEY = 'zeroclaw_jarvis_spline_scene';
 const DEFAULT_GATEWAY = 'http://127.0.0.1:42617';
 
 function readLocal(key: string): string {
@@ -129,6 +130,19 @@ export function setSttEndpoint(provider: SttProvider, url: string): void {
 export function getSttModel(provider: SttProvider): string {
   if (provider === 'browser') return '';
   return STT_PROVIDER_DEFAULTS[provider].model;
+}
+
+/**
+ * Optional Spline scene URL (a `*.splinecode` resource) that replaces
+ * the built-in Three.js orb on the Jarvis page. Empty string = use
+ * the built-in orb.
+ */
+export function getSplineSceneUrl(): string {
+  return readLocal(SPLINE_SCENE_KEY);
+}
+
+export function setSplineSceneUrl(url: string): void {
+  writeLocal(SPLINE_SCENE_KEY, url.trim());
 }
 
 /** Preferred SpeechSynthesis voice (locale tag, e.g. "es-ES" or "en-US"). */

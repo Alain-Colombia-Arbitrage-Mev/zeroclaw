@@ -15,18 +15,22 @@
 // from the gear icon in the top-right.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Mic, Settings as SettingsIcon, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Mic, Settings as SettingsIcon, X } from 'lucide-react';
 import JarvisOrb from '../components/JarvisOrb';
+import JarvisOrbSpline from '../components/JarvisOrbSpline';
 import { useVoice } from '../hooks/useVoice';
 import { useWebSocket } from '../hooks/useWebSocket';
 import {
   getJarvisGateway,
   getPreferredVoiceLocale,
+  getSplineSceneUrl,
   getSttApiKey,
   getSttEndpoint,
   getSttProvider,
   setJarvisGateway,
   setPreferredVoiceLocale,
+  setSplineSceneUrl,
   setSttApiKey,
   setSttEndpoint,
   setSttProvider,
@@ -35,6 +39,10 @@ import {
   type SttProvider,
 } from '../lib/jarvisSettings';
 import { useLocale } from '../lib/i18n';
+
+/** Fallback Spline scene used when the operator hasn't configured one yet. */
+const DEFAULT_SPLINE_SCENE =
+  'https://prod.spline.design/jXcoLrXgC8kt-PkP/scene.splinecode';
 
 interface Exchange {
   user: string;
@@ -50,6 +58,7 @@ const SUPPORTED_VOICE_LOCALES = [
 
 export default function Jarvis() {
   const { t } = useLocale();
+  const navigate = useNavigate();
   const voice = useVoice();
   const ws = useWebSocket({
     baseUrl: useMemo(() => getJarvisGateway().replace(/^http/, 'ws'), []),
@@ -129,27 +138,50 @@ export default function Jarvis() {
   })();
 
   return (
-    <div className="min-h-full flex flex-col items-center justify-center p-6 relative">
+    <div
+      className="fixed inset-0 overflow-hidden"
+      style={{
+        background:
+          'radial-gradient(ellipse at center, rgba(8, 12, 28, 1) 0%, rgba(4, 6, 14, 1) 60%, rgba(0, 0, 0, 1) 100%)',
+      }}
+    >
+      {/* Fullscreen orb behind everything. Spline by default (the
+          operator can override the scene URL or clear it from
+          settings; clearing falls back to the built-in Three.js orb). */}
+      <div className="absolute inset-0 z-0">
+        <OrbStage audioLevel={voice.audioLevel} mode={voice.mode} />
+      </div>
+
+      <button
+        onClick={() => navigate('/')}
+        className="absolute top-4 left-4 z-30 p-2 rounded-lg hover:bg-white/5 backdrop-blur-sm"
+        aria-label="Back to dashboard"
+        title="Back to dashboard"
+      >
+        <ArrowLeft className="h-5 w-5" style={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+      </button>
+
       <button
         onClick={() => setShowSettings(true)}
-        className="absolute top-4 right-4 p-2 rounded-lg hover:bg-white/5"
+        className="absolute top-4 right-4 z-30 p-2 rounded-lg hover:bg-white/5 backdrop-blur-sm"
         aria-label={t('jarvis.settings_open')}
         title={t('jarvis.settings_open')}
       >
-        <SettingsIcon className="h-5 w-5" style={{ color: 'var(--pc-text-muted)' }} />
+        <SettingsIcon className="h-5 w-5" style={{ color: 'rgba(255, 255, 255, 0.7)' }} />
       </button>
 
-      <div className="flex flex-col items-center gap-8">
-        <JarvisOrb audioLevel={voice.audioLevel} mode={voice.mode} size={360} />
+      <p
+        className="absolute top-6 left-1/2 -translate-x-1/2 z-20 text-sm tracking-[0.3em] uppercase pointer-events-none"
+        style={{
+          color: 'rgba(255, 255, 255, 0.65)',
+          textShadow: '0 0 12px rgba(0, 0, 0, 0.8)',
+        }}
+        aria-live="polite"
+      >
+        {statusLabel}
+      </p>
 
-        <p
-          className="text-sm tracking-wide uppercase"
-          style={{ color: 'var(--pc-text-muted)' }}
-          aria-live="polite"
-        >
-          {statusLabel}
-        </p>
-
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-12 z-20 flex flex-col items-center gap-4">
         <button
           onPointerDown={handlePressStart}
           onPointerUp={handlePressEnd}
@@ -183,6 +215,56 @@ export default function Jarvis() {
       {showSettings && <JarvisSettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   );
+}
+
+/**
+ * Picks Spline vs the built-in Three.js orb.
+ *
+ * - Default: render the bundled Spline scene (DEFAULT_SPLINE_SCENE).
+ * - Operator can override the URL from settings; clearing it falls back
+ *   to the built-in Three.js orb.
+ * - If the Spline runtime fails at load time, we wipe the bad URL and
+ *   fall back to Three.js so the page never gets stuck on a black canvas.
+ */
+function OrbStage({
+  audioLevel,
+  mode,
+}: {
+  audioLevel: number;
+  mode: 'idle' | 'listening' | 'speaking' | 'thinking';
+}) {
+  const stored = getSplineSceneUrl();
+  const initialUrl = stored || DEFAULT_SPLINE_SCENE;
+  const isExportedScene = (url: string): boolean => {
+    if (!url) return false;
+    try {
+      const u = new URL(url);
+      return (
+        u.hostname.endsWith('spline.design') &&
+        !u.hostname.startsWith('app.') &&
+        url.endsWith('.splinecode')
+      );
+    } catch {
+      return false;
+    }
+  };
+  const [splineFailed, setSplineFailed] = useState(false);
+  const useSpline = isExportedScene(initialUrl) && !splineFailed;
+
+  if (useSpline) {
+    return (
+      <JarvisOrbSpline
+        sceneUrl={initialUrl}
+        audioLevel={audioLevel}
+        mode={mode}
+        onError={() => {
+          setSplineSceneUrl('');
+          setSplineFailed(true);
+        }}
+      />
+    );
+  }
+  return <JarvisOrb audioLevel={audioLevel} mode={mode} />;
 }
 
 function JarvisSettingsModal({ onClose }: { onClose: () => void }) {
