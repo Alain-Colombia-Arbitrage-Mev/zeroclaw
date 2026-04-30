@@ -16,7 +16,7 @@
 - [Windows](./setup/windows.md)
 - [Docker & containers](./setup/container.md)
 - [Service management](./setup/service.md)
-- [Graphify integration](./setup/graphify.md)
+- [Coder sub-agent](./setup/coder-agent.md)
 
 # Architecture
 
