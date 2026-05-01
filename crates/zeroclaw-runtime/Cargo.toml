@@ -100,6 +100,14 @@ rag-pdf = ["dep:pdf-extract"]
 plugins-wasm = ["dep:zeroclaw-plugins"]
 webauthn = []
 sandbox-bubblewrap = []
+# Forward to the memory + tools crates so the FalkorDB knowledge-graph
+# backend and its parallel KnowledgeToolFalkor are linked in. Required
+# for the runtime-side dispatch in `tools/mod.rs` to compile in the
+# active branch.
+memory-falkordb = [
+    "zeroclaw-memory/memory-falkordb",
+    "zeroclaw-tools/memory-falkordb",
+]
 
 [dev-dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }

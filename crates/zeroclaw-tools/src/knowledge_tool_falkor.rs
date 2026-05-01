@@ -22,6 +22,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
+use tokio::sync::OnceCell;
 use zeroclaw_api::tool::{Tool, ToolResult};
 use zeroclaw_memory::knowledge_graph::{NodeType, Relation};
 use zeroclaw_memory::knowledge_graph_falkordb::FalkorDbKnowledgeGraph;
@@ -29,13 +30,35 @@ use zeroclaw_memory::knowledge_graph_falkordb::FalkorDbKnowledgeGraph;
 /// FalkorDB-backed `knowledge` tool. Drop-in replacement for
 /// `KnowledgeTool` in the runtime tool registry when
 /// `[knowledge] backend = "falkordb"`.
+///
+/// Lazily connects to FalkorDB on first `execute` call so that the
+/// runtime's synchronous tool-registry assembly does not have to be
+/// `async`. Connection failures surface as a tool error on the first
+/// invocation, not at startup — matching the semantics of the
+/// other "external service" tools in this crate.
 pub struct KnowledgeToolFalkor {
-    graph: Arc<FalkorDbKnowledgeGraph>,
+    redis_url: String,
+    graph_name: String,
+    graph: Arc<OnceCell<FalkorDbKnowledgeGraph>>,
 }
 
 impl KnowledgeToolFalkor {
-    pub fn new(graph: Arc<FalkorDbKnowledgeGraph>) -> Self {
-        Self { graph }
+    pub fn new(redis_url: impl Into<String>, graph_name: impl Into<String>) -> Self {
+        Self {
+            redis_url: redis_url.into(),
+            graph_name: graph_name.into(),
+            graph: Arc::new(OnceCell::new()),
+        }
+    }
+
+    /// Resolve (lazy-connect) the underlying graph handle.
+    async fn graph(&self) -> Result<&FalkorDbKnowledgeGraph, String> {
+        self.graph
+            .get_or_try_init(|| async {
+                FalkorDbKnowledgeGraph::connect(&self.redis_url, &self.graph_name).await
+            })
+            .await
+            .map_err(|e| format!("FalkorDB connect failed: {e}"))
     }
 }
 
@@ -107,8 +130,11 @@ impl KnowledgeToolFalkor {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty());
 
-        match self
-            .graph
+        let graph = match self.graph().await {
+            Ok(g) => g,
+            Err(reason) => return Ok(deny(&reason)),
+        };
+        match graph
             .add_node(node_type, title, content, &tags, source_project)
             .await
         {
@@ -128,7 +154,11 @@ impl KnowledgeToolFalkor {
                 "FalkorDB search requires at least one tag in the `tags` array",
             ));
         }
-        match self.graph.query_by_tags(&tags).await {
+        let graph = match self.graph().await {
+            Ok(g) => g,
+            Err(reason) => return Ok(deny(&reason)),
+        };
+        match graph.query_by_tags(&tags).await {
             Ok(nodes) => {
                 let payload = json!({
                     "count": nodes.len(),
@@ -155,7 +185,11 @@ impl KnowledgeToolFalkor {
         let relation_str = required_str(args, "relation")?;
         let relation = Relation::parse(relation_str)
             .map_err(|e| anyhow::anyhow!("Invalid relation '{relation_str}': {e}"))?;
-        match self.graph.add_edge(from_id, to_id, relation).await {
+        let graph = match self.graph().await {
+            Ok(g) => g,
+            Err(reason) => return Ok(deny(&reason)),
+        };
+        match graph.add_edge(from_id, to_id, relation).await {
             Ok(()) => Ok(ToolResult {
                 success: true,
                 output: json!({ "from_id": from_id, "to_id": to_id, "relation": relation_str })
@@ -167,7 +201,11 @@ impl KnowledgeToolFalkor {
     }
 
     async fn stats(&self) -> anyhow::Result<ToolResult> {
-        match self.graph.stats().await {
+        let graph = match self.graph().await {
+            Ok(g) => g,
+            Err(reason) => return Ok(deny(&reason)),
+        };
+        match graph.stats().await {
             Ok(stats) => Ok(ToolResult {
                 success: true,
                 output: json!({

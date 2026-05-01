@@ -826,24 +826,20 @@ pub fn all_tools_with_runtime(
             "falkordb" => {
                 #[cfg(feature = "memory-falkordb")]
                 {
-                    use zeroclaw_memory::knowledge_graph_falkordb::FalkorDbKnowledgeGraph;
                     use zeroclaw_tools::knowledge_tool_falkor::KnowledgeToolFalkor;
                     let url = &root_config.knowledge.falkordb.url;
                     let graph_name = &root_config.knowledge.falkordb.graph;
-                    match FalkorDbKnowledgeGraph::connect(url, graph_name).await {
-                        Ok(graph) => {
-                            tracing::info!(
-                                "📚 FalkorDB knowledge graph connected (url={url}, graph={graph_name})"
-                            );
-                            tool_arcs.push(Arc::new(KnowledgeToolFalkor::new(Arc::new(graph))));
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "FalkorDB knowledge graph disabled due to connect error \
-                                 (url={url}): {e}"
-                            );
-                        }
-                    }
+                    // Lazy connection — actual Redis dial happens on the
+                    // first tool call so we keep tool-registry assembly
+                    // synchronous and avoid blocking startup on a slow
+                    // / temporarily-unreachable FalkorDB.
+                    tracing::info!(
+                        "📚 FalkorDB knowledge graph registered (url={url}, graph={graph_name}); will connect on first use"
+                    );
+                    tool_arcs.push(Arc::new(KnowledgeToolFalkor::new(
+                        url.clone(),
+                        graph_name.clone(),
+                    )));
                 }
                 #[cfg(not(feature = "memory-falkordb"))]
                 {
