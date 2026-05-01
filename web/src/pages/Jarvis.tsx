@@ -146,42 +146,79 @@ export default function Jarvis() {
     }
   })();
 
+  // Premium chrome — neutral charcoal panels with hairline borders. Single
+  // accent (cyan) used sparingly for state feedback. Avoid bright color
+  // floods so the Spline orb stays the visual centerpiece.
+  const PANEL_BG = 'rgba(10, 10, 14, 0.72)';
+  const PANEL_BG_SOFT = 'rgba(10, 10, 14, 0.55)';
+  const HAIRLINE = '1px solid rgba(255, 255, 255, 0.08)';
+  const TEXT_PRIMARY = 'rgba(244, 244, 245, 0.96)';
+  const TEXT_SECONDARY = 'rgba(212, 212, 216, 0.72)';
+  const TEXT_MUTED = 'rgba(161, 161, 170, 0.6)';
+  const ACCENT = '#22d3ee';
+
+  // State-driven dot color for the status indicator.
+  const statusDotColor =
+    voice.error ? '#f87171'
+      : ws.status !== 'connected' ? '#fbbf24'
+      : voice.mode === 'listening' ? ACCENT
+      : voice.mode === 'speaking' ? '#a78bfa'
+      : voice.mode === 'thinking' ? '#fbbf24'
+      : 'rgba(244, 244, 245, 0.45)';
+
+  const isMicBusy = ws.status !== 'connected' || voice.mode === 'thinking' || voice.mode === 'speaking';
+  const isListening = voice.mode === 'listening';
+
   return (
     <div
-      className="fixed inset-0 overflow-hidden"
+      className="fixed inset-0 overflow-hidden notranslate"
+      translate="no"
       style={{
         background:
-          'radial-gradient(ellipse at center, rgba(8, 12, 28, 1) 0%, rgba(4, 6, 14, 1) 60%, rgba(0, 0, 0, 1) 100%)',
+          'radial-gradient(ellipse at center, rgba(10, 10, 14, 1) 0%, rgba(4, 4, 6, 1) 70%, rgba(0, 0, 0, 1) 100%)',
       }}
     >
-      {/* Fullscreen orb behind everything. Spline by default (the
-          operator can override the scene URL or clear it from
-          settings; clearing falls back to the built-in Three.js orb). */}
+      {/* Fullscreen orb behind everything. */}
       <div className="absolute inset-0 z-0">
         <OrbStage audioLevel={voice.audioLevel} mode={voice.mode} />
       </div>
 
+      {/* Subtle vignette so chrome stays legible over bright orb pixels. */}
+      <div
+        className="absolute inset-0 z-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.45) 100%)',
+        }}
+      />
+
       <button
         onClick={() => navigate('/')}
-        className="absolute top-4 left-4 z-30 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 backdrop-blur-sm border border-white/10"
+        className="absolute top-5 left-5 z-30 group flex items-center gap-2.5 pl-3 pr-4 py-2 rounded-lg backdrop-blur-xl transition-all duration-200 hover:bg-white/[0.06]"
         aria-label="Back to dashboard"
         title="Back to dashboard"
-        style={{ background: 'rgba(0,0,0,0.35)' }}
+        style={{ background: PANEL_BG, border: HAIRLINE }}
       >
-        <ArrowLeft className="h-4 w-4" style={{ color: 'rgba(255, 255, 255, 0.85)' }} />
-        <span className="text-xs tracking-[0.2em] uppercase" style={{ color: 'rgba(255, 255, 255, 0.85)' }}>
+        <ArrowLeft
+          className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5"
+          style={{ color: TEXT_SECONDARY }}
+        />
+        <span
+          className="text-[11px] tracking-[0.18em] uppercase font-medium"
+          style={{ color: TEXT_PRIMARY }}
+        >
           Dashboard
         </span>
       </button>
 
       <button
         onClick={() => setShowSettings(true)}
-        className="absolute top-4 right-4 z-30 p-2 rounded-lg hover:bg-white/10 backdrop-blur-sm border border-white/10"
+        className="absolute top-5 right-5 z-30 p-2.5 rounded-lg backdrop-blur-xl transition-colors duration-200 hover:bg-white/[0.06]"
         aria-label={t('jarvis.settings_open')}
         title={t('jarvis.settings_open')}
-        style={{ background: 'rgba(0,0,0,0.35)' }}
+        style={{ background: PANEL_BG, border: HAIRLINE }}
       >
-        <SettingsIcon className="h-5 w-5" style={{ color: 'rgba(255, 255, 255, 0.9)' }} />
+        <SettingsIcon className="h-4 w-4" style={{ color: TEXT_SECONDARY }} />
       </button>
 
       <div
@@ -189,67 +226,110 @@ export default function Jarvis() {
         aria-live="polite"
       >
         <div
-          className="px-4 py-2 rounded-full backdrop-blur-md border border-white/10"
-          style={{ background: 'rgba(0,0,0,0.55)' }}
+          className="flex items-center gap-2.5 pl-3 pr-4 py-2 rounded-full backdrop-blur-xl"
+          style={{ background: PANEL_BG, border: HAIRLINE }}
         >
-          <p
-            className="text-sm tracking-[0.3em] uppercase font-semibold"
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full"
             style={{
-              color: 'rgba(255, 255, 255, 0.95)',
-              textShadow: '0 1px 6px rgba(0, 0, 0, 0.9)',
+              background: statusDotColor,
+              boxShadow: `0 0 8px ${statusDotColor}`,
+              animation: isListening || voice.mode === 'thinking' ? 'pulse-dot 1.4s ease-in-out infinite' : 'none',
             }}
+          />
+          <p
+            className="text-[11px] tracking-[0.22em] uppercase font-medium"
+            style={{ color: TEXT_PRIMARY }}
           >
             {statusLabel}
           </p>
         </div>
         <div
-          className="px-3 py-1 rounded-full backdrop-blur-md border border-white/10"
-          style={{ background: 'rgba(0,0,0,0.45)' }}
+          className="px-2.5 py-1 rounded-full backdrop-blur-xl"
+          style={{ background: PANEL_BG_SOFT, border: HAIRLINE }}
         >
           <p
-            className="text-[10px] tracking-[0.2em] uppercase"
-            style={{ color: activeProvider === 'browser' ? '#fca5a5' : '#86efac' }}
+            className="text-[9px] tracking-[0.22em] uppercase font-medium"
+            style={{ color: activeProvider === 'browser' ? '#fda4af' : '#a7f3d0' }}
           >
-            STT: {providerLabel}
+            <span style={{ color: TEXT_MUTED, marginRight: 6 }}>STT</span>
+            {providerLabel}
           </p>
         </div>
       </div>
 
-      <div className="absolute left-1/2 -translate-x-1/2 bottom-12 z-20 flex flex-col items-center gap-4 w-full max-w-2xl px-4">
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-12 z-20 flex flex-col items-center gap-5 w-full max-w-2xl px-6">
         <button
           onPointerDown={handlePressStart}
           onPointerUp={handlePressEnd}
           onPointerCancel={handlePressEnd}
-          onPointerLeave={voice.mode === 'listening' ? handlePressEnd : undefined}
-          disabled={ws.status !== 'connected' || voice.mode === 'thinking' || voice.mode === 'speaking'}
-          className="btn-electric flex items-center gap-3 px-6 py-4 text-base font-semibold tracking-wide shadow-2xl"
-          style={{ boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)' }}
+          onPointerLeave={isListening ? handlePressEnd : undefined}
+          disabled={isMicBusy}
+          className="group relative flex items-center gap-3 px-7 py-3.5 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed select-none"
+          style={{
+            background: isListening ? ACCENT : PANEL_BG,
+            border: isListening ? '1px solid rgba(34, 211, 238, 0.5)' : HAIRLINE,
+            backdropFilter: 'blur(20px)',
+            boxShadow: isListening
+              ? `0 0 0 4px rgba(34, 211, 238, 0.15), 0 8px 32px rgba(34, 211, 238, 0.35)`
+              : '0 8px 32px rgba(0, 0, 0, 0.5)',
+          }}
         >
-          <Mic className="h-5 w-5" />
-          {voice.mode === 'listening' ? t('jarvis.release_to_send') : t('jarvis.hold_to_talk')}
+          <Mic
+            className="h-4 w-4"
+            style={{ color: isListening ? '#0a0a0e' : TEXT_PRIMARY }}
+          />
+          <span
+            className="text-[12px] tracking-[0.18em] uppercase font-semibold"
+            style={{ color: isListening ? '#0a0a0e' : TEXT_PRIMARY }}
+          >
+            {isListening ? t('jarvis.release_to_send') : t('jarvis.hold_to_talk')}
+          </span>
         </button>
 
         {exchanges.length > 0 && (
           <div
-            className="w-full mt-4 space-y-3 p-4 rounded-2xl backdrop-blur-md border border-white/10"
-            style={{ background: 'rgba(0,0,0,0.55)' }}
+            className="w-full space-y-2 p-4 rounded-2xl backdrop-blur-xl"
+            style={{ background: PANEL_BG, border: HAIRLINE }}
           >
             {exchanges.slice(-3).map((ex, i) => (
               <div
                 key={i}
-                className="p-3 rounded-lg border border-white/10"
-                style={{ background: 'rgba(0,0,0,0.4)' }}
+                className="p-3 rounded-lg"
+                style={{ background: 'rgba(255, 255, 255, 0.02)', border: HAIRLINE }}
               >
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#7dd3fc' }}>
-                  {t('jarvis.you')}
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span
+                    className="inline-block h-1 w-1 rounded-full"
+                    style={{ background: ACCENT }}
+                  />
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-[0.2em]"
+                    style={{ color: TEXT_MUTED }}
+                  >
+                    {t('jarvis.you')}
+                  </span>
+                </div>
+                <p className="mb-2 text-[13px] leading-relaxed" style={{ color: TEXT_PRIMARY }}>
+                  {ex.user}
                 </p>
-                <p className="mb-2 text-sm" style={{ color: 'rgba(255,255,255,0.95)' }}>{ex.user}</p>
                 {ex.assistant && (
                   <>
-                    <p className="text-xs font-semibold uppercase tracking-wider mb-1 mt-2" style={{ color: '#a78bfa' }}>
-                      Jarvis
+                    <div className="flex items-baseline gap-2 mb-1 mt-3">
+                      <span
+                        className="inline-block h-1 w-1 rounded-full"
+                        style={{ background: '#a78bfa' }}
+                      />
+                      <span
+                        className="text-[9px] font-semibold uppercase tracking-[0.2em]"
+                        style={{ color: TEXT_MUTED }}
+                      >
+                        Jarvis
+                      </span>
+                    </div>
+                    <p className="text-[13px] leading-relaxed" style={{ color: TEXT_PRIMARY }}>
+                      {ex.assistant}
                     </p>
-                    <p className="text-sm" style={{ color: 'rgba(255,255,255,0.95)' }}>{ex.assistant}</p>
                   </>
                 )}
               </div>
