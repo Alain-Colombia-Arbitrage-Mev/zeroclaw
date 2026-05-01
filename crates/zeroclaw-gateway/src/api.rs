@@ -739,6 +739,66 @@ pub async fn handle_api_memory_delete(
     }
 }
 
+/// GET /api/knowledge/graph — return the Graphify knowledge graph
+/// (`graphify-out/graph.json`) as JSON for the dashboard's graph
+/// view. Looks in the workspace dir first, then the daemon's CWD.
+/// Returns `{empty: true, hint: "..."}` when no graph has been
+/// generated yet — the frontend renders a friendly call-to-action
+/// rather than an error.
+pub async fn handle_api_knowledge_graph(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let workspace_dir = {
+        let cfg = state.config.lock();
+        cfg.workspace_dir.clone()
+    };
+
+    let candidates: Vec<std::path::PathBuf> = vec![
+        workspace_dir.join("graphify-out").join("graph.json"),
+        std::env::current_dir()
+            .map(|cwd| cwd.join("graphify-out").join("graph.json"))
+            .unwrap_or_default(),
+    ];
+
+    for path in candidates {
+        if path.is_file() {
+            match tokio::fs::read_to_string(&path).await {
+                Ok(body) => {
+                    return (
+                        StatusCode::OK,
+                        [(header::CONTENT_TYPE, "application/json")],
+                        body,
+                    )
+                        .into_response();
+                }
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({
+                            "error": format!("Failed to read graphify-out/graph.json: {e}"),
+                            "path": path.display().to_string(),
+                        })),
+                    )
+                        .into_response();
+                }
+            }
+        }
+    }
+
+    Json(serde_json::json!({
+        "empty": true,
+        "hint": "No graphify-out/graph.json found. Run `graphify init` from the project root \
+                 (pip install graphifyy) or invoke the `graphify` tool with action=\"init\" to \
+                 generate the graph.",
+    }))
+    .into_response()
+}
+
 /// GET /api/cost — cost summary
 pub async fn handle_api_cost(
     State(state): State<AppState>,

@@ -360,3 +360,27 @@ export function getCliTools(): Promise<CliTool[]> {
     return Array.isArray(result) ? result : [];
   });
 }
+
+// ---------------------------------------------------------------------------
+// Knowledge graph (Graphify)
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw Graphify graph dump shape — `nodes` / `edges` (or `links`,
+ * networkx style). When the daemon hasn't generated the graph yet
+ * the API returns `{empty: true, hint: ...}` instead, which the
+ * caller should branch on.
+ */
+export type GraphifyGraph =
+  | {
+      empty?: false;
+      nodes: Array<Record<string, unknown>>;
+      edges?: Array<Record<string, unknown>>;
+      links?: Array<Record<string, unknown>>;
+      [key: string]: unknown;
+    }
+  | { empty: true; hint: string };
+
+export function getKnowledgeGraph(): Promise<GraphifyGraph> {
+  return apiFetch<GraphifyGraph>('/api/knowledge/graph');
+}
