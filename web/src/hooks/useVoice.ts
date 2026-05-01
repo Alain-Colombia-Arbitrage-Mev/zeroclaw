@@ -307,9 +307,17 @@ export function useVoice(): UseVoiceResult {
         if (finalText) browserTranscriptRef.current = finalText.trim();
       };
       recognition.onerror = (ev) => {
-        if (ev.error !== 'no-speech' && ev.error !== 'aborted') {
-          setError(`Recognition error: ${ev.error}`);
+        if (ev.error === 'no-speech' || ev.error === 'aborted') return;
+        if (ev.error === 'network') {
+          // Chrome's SpeechRecognition relays audio through Google servers
+          // and fails on restricted networks. Point the user at the remote
+          // provider option in settings instead of leaving them stuck.
+          setError(
+            'Browser STT requires Google connectivity. Open Settings (gear) and switch to Groq or OpenAI Whisper.',
+          );
+          return;
         }
+        setError(`Recognition error: ${ev.error}`);
       };
       recognition.onend = () => {
         // No auto-restart — stopRecording reads the buffered transcript.

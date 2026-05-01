@@ -67,6 +67,15 @@ export default function Jarvis() {
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pendingUser, setPendingUser] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<SttProvider>(() => getSttProvider());
+
+  // Refresh the displayed provider when the settings modal closes (in case
+  // the user changed it).
+  useEffect(() => {
+    if (!showSettings) setActiveProvider(getSttProvider());
+  }, [showSettings]);
+
+  const providerLabel = SUPPORTED_STT_PROVIDERS.find((p) => p.value === activeProvider)?.label ?? activeProvider;
 
   // Track responses arriving over the WS so we can speak them when done.
   const lastSeenIndexRef = useRef(0);
@@ -154,56 +163,93 @@ export default function Jarvis() {
 
       <button
         onClick={() => navigate('/')}
-        className="absolute top-4 left-4 z-30 p-2 rounded-lg hover:bg-white/5 backdrop-blur-sm"
+        className="absolute top-4 left-4 z-30 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 backdrop-blur-sm border border-white/10"
         aria-label="Back to dashboard"
         title="Back to dashboard"
+        style={{ background: 'rgba(0,0,0,0.35)' }}
       >
-        <ArrowLeft className="h-5 w-5" style={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+        <ArrowLeft className="h-4 w-4" style={{ color: 'rgba(255, 255, 255, 0.85)' }} />
+        <span className="text-xs tracking-[0.2em] uppercase" style={{ color: 'rgba(255, 255, 255, 0.85)' }}>
+          Dashboard
+        </span>
       </button>
 
       <button
         onClick={() => setShowSettings(true)}
-        className="absolute top-4 right-4 z-30 p-2 rounded-lg hover:bg-white/5 backdrop-blur-sm"
+        className="absolute top-4 right-4 z-30 p-2 rounded-lg hover:bg-white/10 backdrop-blur-sm border border-white/10"
         aria-label={t('jarvis.settings_open')}
         title={t('jarvis.settings_open')}
+        style={{ background: 'rgba(0,0,0,0.35)' }}
       >
-        <SettingsIcon className="h-5 w-5" style={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+        <SettingsIcon className="h-5 w-5" style={{ color: 'rgba(255, 255, 255, 0.9)' }} />
       </button>
 
-      <p
-        className="absolute top-6 left-1/2 -translate-x-1/2 z-20 text-sm tracking-[0.3em] uppercase pointer-events-none"
-        style={{
-          color: 'rgba(255, 255, 255, 0.65)',
-          textShadow: '0 0 12px rgba(0, 0, 0, 0.8)',
-        }}
+      <div
+        className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 pointer-events-none"
         aria-live="polite"
       >
-        {statusLabel}
-      </p>
+        <div
+          className="px-4 py-2 rounded-full backdrop-blur-md border border-white/10"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+        >
+          <p
+            className="text-sm tracking-[0.3em] uppercase font-semibold"
+            style={{
+              color: 'rgba(255, 255, 255, 0.95)',
+              textShadow: '0 1px 6px rgba(0, 0, 0, 0.9)',
+            }}
+          >
+            {statusLabel}
+          </p>
+        </div>
+        <div
+          className="px-3 py-1 rounded-full backdrop-blur-md border border-white/10"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+        >
+          <p
+            className="text-[10px] tracking-[0.2em] uppercase"
+            style={{ color: activeProvider === 'browser' ? '#fca5a5' : '#86efac' }}
+          >
+            STT: {providerLabel}
+          </p>
+        </div>
+      </div>
 
-      <div className="absolute left-1/2 -translate-x-1/2 bottom-12 z-20 flex flex-col items-center gap-4">
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-12 z-20 flex flex-col items-center gap-4 w-full max-w-2xl px-4">
         <button
           onPointerDown={handlePressStart}
           onPointerUp={handlePressEnd}
           onPointerCancel={handlePressEnd}
           onPointerLeave={voice.mode === 'listening' ? handlePressEnd : undefined}
           disabled={ws.status !== 'connected' || voice.mode === 'thinking' || voice.mode === 'speaking'}
-          className="btn-electric flex items-center gap-3 px-6 py-4 text-base font-semibold tracking-wide"
+          className="btn-electric flex items-center gap-3 px-6 py-4 text-base font-semibold tracking-wide shadow-2xl"
+          style={{ boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)' }}
         >
           <Mic className="h-5 w-5" />
           {voice.mode === 'listening' ? t('jarvis.release_to_send') : t('jarvis.hold_to_talk')}
         </button>
 
         {exchanges.length > 0 && (
-          <div className="w-full max-w-2xl mt-4 space-y-3">
+          <div
+            className="w-full mt-4 space-y-3 p-4 rounded-2xl backdrop-blur-md border border-white/10"
+            style={{ background: 'rgba(0,0,0,0.55)' }}
+          >
             {exchanges.slice(-3).map((ex, i) => (
-              <div key={i} className="card p-4 text-sm">
-                <p className="font-medium" style={{ color: 'var(--pc-accent)' }}>{t('jarvis.you')}</p>
-                <p className="mb-2" style={{ color: 'var(--pc-text-primary)' }}>{ex.user}</p>
+              <div
+                key={i}
+                className="p-3 rounded-lg border border-white/10"
+                style={{ background: 'rgba(0,0,0,0.4)' }}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#7dd3fc' }}>
+                  {t('jarvis.you')}
+                </p>
+                <p className="mb-2 text-sm" style={{ color: 'rgba(255,255,255,0.95)' }}>{ex.user}</p>
                 {ex.assistant && (
                   <>
-                    <p className="font-medium mt-2" style={{ color: 'var(--pc-text-muted)' }}>Jarvis</p>
-                    <p style={{ color: 'var(--pc-text-primary)' }}>{ex.assistant}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider mb-1 mt-2" style={{ color: '#a78bfa' }}>
+                      Jarvis
+                    </p>
+                    <p className="text-sm" style={{ color: 'rgba(255,255,255,0.95)' }}>{ex.assistant}</p>
                   </>
                 )}
               </div>

@@ -12,7 +12,7 @@
 // (intensity, scale, material colour, etc.). If the scene doesn't
 // expose them, the push is a silent no-op — the orb still renders.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Spline from '@splinetool/react-spline';
 import type { Application } from '@splinetool/runtime';
 
@@ -38,6 +38,8 @@ export default function JarvisOrbSpline({
   onError,
 }: JarvisOrbSplineProps) {
   const appRef = useRef<Application | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
 
   // Push current audio + mode into the scene every render. `setVariable`
   // is a fast no-op when the variable isn't defined in the scene, so we
@@ -66,11 +68,36 @@ export default function JarvisOrbSpline({
         scene={sceneUrl}
         onLoad={(app) => {
           appRef.current = app;
+          setLoaded(true);
+          // eslint-disable-next-line no-console
+          console.info('[JarvisOrbSpline] scene loaded', sceneUrl);
           onLoad?.();
         }}
-        onError={(e: unknown) => onError?.(e)}
+        onError={(e: unknown) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          setErrorText(msg);
+          // eslint-disable-next-line no-console
+          console.error('[JarvisOrbSpline] scene failed to load', sceneUrl, e);
+          onError?.(e);
+        }}
         style={{ width: '100%', height: '100%' }}
       />
+      {!loaded && !errorText && (
+        <div
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.8rem', letterSpacing: '0.2em' }}
+        >
+          LOADING SPLINE SCENE…
+        </div>
+      )}
+      {errorText && (
+        <div
+          className="absolute inset-x-0 bottom-1/3 text-center pointer-events-none"
+          style={{ color: '#f87171', fontSize: '0.75rem' }}
+        >
+          Spline error: {errorText}
+        </div>
+      )}
     </div>
   );
 }
