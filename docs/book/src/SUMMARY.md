@@ -18,6 +18,14 @@
 - [Service management](./setup/service.md)
 - [Coder sub-agent](./setup/coder-agent.md)
 - [Designer sub-agent + Pencil.dev](./setup/designer-agent.md)
+- [QA sub-agent](./setup/qa-agent.md)
+- [Security sub-agent](./setup/security-agent.md)
+- [DevOps sub-agent](./setup/devops-agent.md)
+- [Server architect sub-agent](./setup/server-architect-agent.md)
+- [Marketing sub-agent](./setup/marketing-agent.md)
+- [Content creator sub-agent](./setup/content-creator-agent.md)
+- [Scriptwriter sub-agent](./setup/scriptwriter-agent.md)
+- [Market researcher sub-agent](./setup/market-researcher-agent.md)
 
 # Architecture
 
