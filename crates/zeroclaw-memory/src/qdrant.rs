@@ -221,7 +221,15 @@ impl QdrantMemory {
     }
 }
 
-/// Qdrant point payload structure
+/// Qdrant point payload structure.
+///
+/// `tenant_id` lets a single Qdrant collection host many isolated
+/// businesses without duplicating the universal corpus. New writes
+/// are stamped with the active tenant (read from
+/// [`active_tenant`]); recall filters by `tenant_id == active OR
+/// tenant_id IS NULL` so the global corpus stays visible to every
+/// tenant. Existing chunks (pre-multi-tenant) have no `tenant_id`
+/// and are therefore treated as global — no migration required.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MemoryPayload {
     key: String,
@@ -230,6 +238,27 @@ struct MemoryPayload {
     timestamp: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tenant_id: Option<String>,
+}
+
+tokio::task_local! {
+    /// Active tenant for the current async task.
+    ///
+    /// Set at the gateway WS connect (from `X-Octopus-Tenant`); the
+    /// memory backend reads this when stamping new memories and
+    /// filtering recall. `None` (or task-local unset) means the
+    /// caller is in the global / single-tenant scope.
+    pub static ACTIVE_TENANT: Option<String>;
+}
+
+/// Read the active tenant from task-local storage. Returns `None`
+/// when called outside an `ACTIVE_TENANT.scope(..)` block.
+fn current_tenant() -> Option<String> {
+    ACTIVE_TENANT
+        .try_with(|t| t.clone())
+        .ok()
+        .flatten()
 }
 
 /// Qdrant search result
@@ -294,6 +323,7 @@ impl Memory for QdrantMemory {
             category: Self::category_to_str(&category),
             timestamp,
             session_id: session_id.map(str::to_string),
+            tenant_id: current_tenant(),
         };
 
         // Delete any existing point with the same key first
@@ -358,15 +388,40 @@ impl Memory for QdrantMemory {
             return self.list(None, session_id).await;
         }
 
-        // Build filter for session_id if provided
-        let filter = session_id.map(|sid| {
-            serde_json::json!({
-                "must": [{
-                    "key": "session_id",
-                    "match": { "value": sid }
-                }]
-            })
-        });
+        // Build filter combining session_id (when provided) and the
+        // tenant scope. Tenant logic:
+        //   - active tenant set: match `tenant_id == active` OR
+        //     payload missing `tenant_id` (global corpus is visible
+        //     to every tenant).
+        //   - no active tenant: no tenant filter — caller sees
+        //     everything (single-tenant / dev mode).
+        let mut must_clauses: Vec<serde_json::Value> = Vec::new();
+        if let Some(sid) = session_id {
+            must_clauses.push(serde_json::json!({
+                "key": "session_id",
+                "match": { "value": sid }
+            }));
+        }
+        let tenant = current_tenant();
+        let filter: Option<serde_json::Value> = match (must_clauses.is_empty(), tenant.as_deref()) {
+            (true, None) => None,
+            (false, None) => Some(serde_json::json!({"must": must_clauses})),
+            (true, Some(t)) => Some(serde_json::json!({
+                "should": [
+                    {"key": "tenant_id", "match": {"value": t}},
+                    {"is_empty": {"key": "tenant_id"}}
+                ],
+                "minimum_should_match": 1
+            })),
+            (false, Some(t)) => Some(serde_json::json!({
+                "must": must_clauses,
+                "should": [
+                    {"key": "tenant_id", "match": {"value": t}},
+                    {"is_empty": {"key": "tenant_id"}}
+                ],
+                "minimum_should_match": 1
+            })),
+        };
 
         // Over-fetch dense candidates so BM25 has a richer batch to
         // re-rank when hybrid search is enabled. Pure-embedding mode

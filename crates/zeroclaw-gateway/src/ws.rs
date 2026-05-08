@@ -63,6 +63,10 @@ pub struct WsQuery {
     pub session_id: Option<String>,
     /// Optional human-readable name for the session.
     pub name: Option<String>,
+    /// Active tenant id — alternative to the `X-Octopus-Tenant`
+    /// header for browser clients that can't set custom headers
+    /// on `new WebSocket(url)`.
+    pub tenant: Option<String>,
 }
 
 /// Extract a bearer token from WebSocket-compatible sources.
@@ -142,14 +146,44 @@ pub async fn handle_ws_chat(
 
     let session_id = params.session_id;
     let session_name = params.name;
-    ws.on_upgrade(move |socket| handle_socket(socket, state, session_id, session_name))
-        .into_response()
+    // Multi-tenant: capture the active tenant from the upgrade
+    // request so handle_socket can pin the agent to its memory
+    // scope. Header takes precedence; falls back to query param.
+    let tenant_id = headers
+        .get("x-octopus-tenant")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| params.tenant.clone());
+
+    ws.on_upgrade(move |socket| {
+        handle_socket(socket, state, session_id, session_name, tenant_id)
+    })
+    .into_response()
 }
 
 /// Gateway session key prefix to avoid collisions with channel sessions.
 const GW_SESSION_PREFIX: &str = "gw_";
 
 async fn handle_socket(
+    socket: WebSocket,
+    state: AppState,
+    session_id: Option<String>,
+    session_name: Option<String>,
+    tenant_id: Option<String>,
+) {
+    // Multi-tenant: scope the entire socket lifetime to the resolved
+    // tenant so QdrantMemory's task-local read picks it up on every
+    // store / recall call. `None` = global scope (legacy behaviour).
+    zeroclaw_memory::qdrant::ACTIVE_TENANT
+        .scope(tenant_id, async move {
+            handle_socket_inner(socket, state, session_id, session_name).await
+        })
+        .await
+}
+
+async fn handle_socket_inner(
     socket: WebSocket,
     state: AppState,
     session_id: Option<String>,
