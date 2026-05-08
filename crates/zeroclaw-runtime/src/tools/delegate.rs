@@ -465,11 +465,36 @@ impl DelegateTool {
             }
         };
 
-        // Build the message
-        let full_prompt = if context.is_empty() {
-            prompt.to_string()
+        // Role-aware corpus injection. When a memory backend is wired
+        // up, pull the most relevant chunks from Qdrant before the
+        // sub-agent runs — biased toward categories that match the
+        // sub-agent's role (e.g. copywriter ⇒ persuasion + hormozi).
+        // Cheap, ~50ms, runs once per delegation.
+        let memory_preamble = if let Some(ref mem) = self.memory {
+            let mem_ref: &dyn Memory = mem.as_ref();
+            // Threshold mirrors the orchestrator's recall — keep noisy
+            // matches out of the sub-agent's context window.
+            const SUB_AGENT_THRESHOLD: f64 = 0.4;
+            crate::agent::loop_::build_context_for_role(
+                mem_ref,
+                prompt,
+                SUB_AGENT_THRESHOLD,
+                None,
+                Some(agent_name),
+            )
+            .await
         } else {
-            format!("[Context]\n{context}\n\n[Task]\n{prompt}")
+            String::new()
+        };
+
+        // Build the message
+        let full_prompt = match (memory_preamble.is_empty(), context.is_empty()) {
+            (true, true) => prompt.to_string(),
+            (true, false) => format!("[Context]\n{context}\n\n[Task]\n{prompt}"),
+            (false, true) => format!("{memory_preamble}[Task]\n{prompt}"),
+            (false, false) => {
+                format!("{memory_preamble}[Context]\n{context}\n\n[Task]\n{prompt}")
+            }
         };
 
         // Agentic mode: run full tool-call loop with allowlisted tools.

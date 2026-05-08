@@ -384,7 +384,7 @@ async fn build_context(
     build_context_for_role(mem, user_msg, min_relevance_score, session_id, None).await
 }
 
-async fn build_context_for_role(
+pub(crate) async fn build_context_for_role(
     mem: &dyn Memory,
     user_msg: &str,
     min_relevance_score: f64,
