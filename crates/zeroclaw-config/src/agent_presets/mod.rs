@@ -67,6 +67,7 @@ mod coder;
 mod common;
 mod competitor_analyst;
 mod content_creator;
+mod copywriter;
 mod cto_advisor;
 mod customer_researcher;
 mod customer_success;
@@ -82,6 +83,7 @@ mod idea_validator;
 mod legal_compliance;
 mod market_researcher;
 mod marketing;
+mod negotiator;
 mod pivot_strategist;
 mod planner;
 mod pricing_strategist;
@@ -106,6 +108,7 @@ pub use self::cicd::cicd_preset;
 pub use self::coder::coder_preset;
 pub use self::competitor_analyst::competitor_analyst_preset;
 pub use self::content_creator::content_creator_preset;
+pub use self::copywriter::copywriter_preset;
 pub use self::cto_advisor::cto_advisor_preset;
 pub use self::customer_researcher::customer_researcher_preset;
 pub use self::customer_success::customer_success_preset;
@@ -121,6 +124,7 @@ pub use self::idea_validator::idea_validator_preset;
 pub use self::legal_compliance::legal_compliance_preset;
 pub use self::market_researcher::market_researcher_preset;
 pub use self::marketing::marketing_preset;
+pub use self::negotiator::negotiator_preset;
 pub use self::pivot_strategist::pivot_strategist_preset;
 pub use self::planner::planner_preset;
 pub use self::pricing_strategist::pricing_strategist_preset;
@@ -183,6 +187,8 @@ mod tests {
             ("account_executive", account_executive_preset("openrouter", "x")),
             ("customer_success", customer_success_preset("openrouter", "x")),
             ("legal_compliance", legal_compliance_preset("openrouter", "x")),
+            ("copywriter", copywriter_preset("openrouter", "x")),
+            ("negotiator", negotiator_preset("openrouter", "x")),
         ]
     }
 
