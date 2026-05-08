@@ -56,14 +56,20 @@
 //! daemon with no `[agents.*]` section still has zero registered
 //! sub-agents. This module is opt-in.
 
+mod account_executive;
 mod adr_writer;
 mod architect;
 mod business_developer;
 mod ceo_advisor;
+mod cfo_advisor;
 mod cicd;
 mod coder;
 mod common;
+mod competitor_analyst;
 mod content_creator;
+mod cto_advisor;
+mod customer_researcher;
+mod customer_success;
 mod data_analyst;
 mod db_designer;
 mod designer;
@@ -71,26 +77,38 @@ mod devops;
 mod docs;
 mod finance_controller;
 mod growth_hacker;
+mod idea_generator;
+mod idea_validator;
+mod legal_compliance;
 mod market_researcher;
 mod marketing;
+mod pivot_strategist;
 mod planner;
 mod pricing_strategist;
 mod product_manager;
 mod qa;
+mod red_teamer;
 mod reviewer;
 mod risk_analyst;
 mod scriptwriter;
+mod sdr_outbound;
 mod security;
 mod server_architect;
 mod tester;
 
+pub use self::account_executive::account_executive_preset;
 pub use self::adr_writer::adr_writer_preset;
 pub use self::architect::architect_preset;
 pub use self::business_developer::business_developer_preset;
 pub use self::ceo_advisor::ceo_advisor_preset;
+pub use self::cfo_advisor::cfo_advisor_preset;
 pub use self::cicd::cicd_preset;
 pub use self::coder::coder_preset;
+pub use self::competitor_analyst::competitor_analyst_preset;
 pub use self::content_creator::content_creator_preset;
+pub use self::cto_advisor::cto_advisor_preset;
+pub use self::customer_researcher::customer_researcher_preset;
+pub use self::customer_success::customer_success_preset;
 pub use self::data_analyst::data_analyst_preset;
 pub use self::db_designer::db_designer_preset;
 pub use self::designer::designer_preset;
@@ -98,15 +116,21 @@ pub use self::devops::devops_preset;
 pub use self::docs::docs_preset;
 pub use self::finance_controller::finance_controller_preset;
 pub use self::growth_hacker::growth_hacker_preset;
+pub use self::idea_generator::idea_generator_preset;
+pub use self::idea_validator::idea_validator_preset;
+pub use self::legal_compliance::legal_compliance_preset;
 pub use self::market_researcher::market_researcher_preset;
 pub use self::marketing::marketing_preset;
+pub use self::pivot_strategist::pivot_strategist_preset;
 pub use self::planner::planner_preset;
 pub use self::pricing_strategist::pricing_strategist_preset;
 pub use self::product_manager::product_manager_preset;
 pub use self::qa::qa_preset;
+pub use self::red_teamer::red_teamer_preset;
 pub use self::reviewer::reviewer_preset;
 pub use self::risk_analyst::risk_analyst_preset;
 pub use self::scriptwriter::scriptwriter_preset;
+pub use self::sdr_outbound::sdr_outbound_preset;
 pub use self::security::security_preset;
 pub use self::server_architect::server_architect_preset;
 pub use self::tester::tester_preset;
@@ -147,6 +171,18 @@ mod tests {
             ("finance_controller", finance_controller_preset("openrouter", "x")),
             ("data_analyst", data_analyst_preset("openrouter", "x")),
             ("ceo_advisor", ceo_advisor_preset("openrouter", "x")),
+            ("idea_generator", idea_generator_preset("openrouter", "x")),
+            ("idea_validator", idea_validator_preset("openrouter", "x")),
+            ("customer_researcher", customer_researcher_preset("openrouter", "x")),
+            ("competitor_analyst", competitor_analyst_preset("openrouter", "x")),
+            ("red_teamer", red_teamer_preset("openrouter", "x")),
+            ("pivot_strategist", pivot_strategist_preset("openrouter", "x")),
+            ("cfo_advisor", cfo_advisor_preset("openrouter", "x")),
+            ("cto_advisor", cto_advisor_preset("openrouter", "x")),
+            ("sdr_outbound", sdr_outbound_preset("openrouter", "x")),
+            ("account_executive", account_executive_preset("openrouter", "x")),
+            ("customer_success", customer_success_preset("openrouter", "x")),
+            ("legal_compliance", legal_compliance_preset("openrouter", "x")),
         ]
     }
 
