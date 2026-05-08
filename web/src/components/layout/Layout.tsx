@@ -45,7 +45,7 @@ export default function Layout() {
       <div
         className={`
           flex flex-col flex-1 min-w-0 h-screen transition-all duration-300 ease-in-out
-          ${collapsed ? 'md:ml-14' : 'md:ml-60'}
+          ${collapsed ? 'md:ml-16' : 'md:ml-60'}
           ml-0
         `}
       >
