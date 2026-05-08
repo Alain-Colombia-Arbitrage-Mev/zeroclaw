@@ -4,6 +4,8 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import AgentChat from './pages/AgentChat';
+import Agents from './pages/Agents';
+import Orchestrator from './pages/Orchestrator';
 import Tools from './pages/Tools';
 import Cron from './pages/Cron';
 import Integrations from './pages/Integrations';
@@ -138,11 +140,11 @@ function PairingDialog({ onPair }: { onPair: (code: string) => Promise<void> }) 
         <div className="text-center mb-8">
           <img
             src={`${basePath}/_app/zeroclaw-trans.png`}
-            alt="ZeroClaw"
+            alt="Octopus Labs"
             className="h-20 w-20 rounded-2xl object-cover mx-auto mb-4 animate-float"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
-          <h1 className="text-2xl font-bold mb-2 text-gradient-blue">ZeroClaw</h1>
+          <h1 className="text-2xl font-bold mb-2 text-gradient-blue">Octopus Labs</h1>
           <p className="text-sm" style={{ color: 'var(--pc-text-muted)' }}>
             {displayCode ? 'Your pairing code — click Pair to connect' : 'Enter the pairing code from your terminal'}
           </p>
@@ -235,6 +237,8 @@ function AppContent() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/agent" element={<AgentChat />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/orchestrator" element={<Orchestrator />} />
             <Route path="/tools" element={<Tools />} />
             <Route path="/cron" element={<Cron />} />
             <Route path="/integrations" element={<Integrations />} />

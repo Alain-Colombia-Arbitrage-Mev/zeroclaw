@@ -14,12 +14,16 @@ import {
   Stethoscope,
   Monitor,
   Mic,
+  Users,
+  Zap,
 } from 'lucide-react';
 import { t } from '@/lib/i18n';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
   { to: '/agent', icon: MessageSquare, labelKey: 'nav.agent' },
+  { to: '/orchestrator', icon: Zap, labelKey: 'nav.orchestrator' },
+  { to: '/agents', icon: Users, labelKey: 'nav.agents' },
   { to: '/jarvis', icon: Mic, labelKey: 'nav.jarvis' },
   { to: '/tools', icon: Wrench, labelKey: 'nav.tools' },
   { to: '/cron', icon: Clock, labelKey: 'nav.cron' },
@@ -164,7 +168,7 @@ function SidebarLogo({ collapsed }: { collapsed: boolean }) {
         <div className="absolute -inset-1.5 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(var(--pc-accent-rgb), 0.15), rgba(var(--pc-accent-rgb), 0.05))' }} />
         <img
           src={`${basePath}/_app/zeroclaw-trans.png`}
-          alt="ZeroClaw"
+          alt="Octopus Labs"
           className="relative h-9 w-9 rounded-xl object-cover"
           onError={(e) => {
             e.currentTarget.style.display = 'none';
@@ -179,7 +183,7 @@ function SidebarLogo({ collapsed }: { collapsed: boolean }) {
           pointerEvents: collapsed ? 'none' : 'auto',
         }}
       >
-        ZeroClaw
+        Octopus Labs
       </span>
     </div>
   );
@@ -192,7 +196,7 @@ function SidebarFooter({ collapsed, layout }: { collapsed: boolean; layout: 'des
         className="px-5 py-4 border-t text-[10px] uppercase tracking-wider"
         style={{ borderColor: 'var(--pc-border)', color: 'var(--pc-text-faint)' }}
       >
-        ZeroClaw Runtime
+        Octopus Labs Runtime
       </div>
     );
   }
@@ -210,7 +214,7 @@ function SidebarFooter({ collapsed, layout }: { collapsed: boolean; layout: 'des
         textAlign: collapsed ? 'center' : 'left',
       }}
     >
-      {!collapsed && 'ZeroClaw Runtime'}
+      {!collapsed && 'Octopus Labs Runtime'}
     </div>
   );
 }

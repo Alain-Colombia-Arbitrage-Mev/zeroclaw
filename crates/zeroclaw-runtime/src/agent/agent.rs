@@ -345,6 +345,14 @@ impl Agent {
         self.memory_session_id = session_id;
     }
 
+    /// Replace the agent's observability sink after construction.
+    ///
+    /// Used by the gateway to route per-session agent events through the
+    /// SSE broadcast channel without rewriting the whole construction path.
+    pub fn set_observer(&mut self, observer: Arc<dyn Observer>) {
+        self.observer = observer;
+    }
+
     /// Hydrate the agent with prior chat messages (e.g. from a session backend).
     ///
     /// Ensures a system prompt is prepended if history is empty, then appends all

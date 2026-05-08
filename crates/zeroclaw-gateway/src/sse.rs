@@ -14,9 +14,36 @@ use axum::{
 };
 use std::collections::VecDeque;
 use std::convert::Infallible;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
+
+/// LIFO of delegate sub-agent names that are currently in flight.
+///
+/// We push on `ToolCallStart { tool: "delegate", … }` (after parsing the
+/// `agent` arg) and pop on the matching `ToolCall { tool: "delegate", … }`
+/// completion event. The result is a best-effort attribution of the
+/// completion event to the right sub-agent — best-effort because nested
+/// delegations can interleave, but the agent loop is currently single-
+/// threaded per session so the LIFO is correct in the common case.
+fn inflight_targets() -> &'static Mutex<VecDeque<String>> {
+    static INFLIGHT: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
+    INFLIGHT.get_or_init(|| Mutex::new(VecDeque::with_capacity(8)))
+}
+
+fn push_inflight_delegate_target(name: String) {
+    if let Ok(mut q) = inflight_targets().lock() {
+        // Cap to avoid pathological growth from a leaked target.
+        if q.len() >= 64 {
+            q.pop_front();
+        }
+        q.push_back(name);
+    }
+}
+
+fn consume_inflight_delegate_target() -> Option<String> {
+    inflight_targets().lock().ok().and_then(|mut q| q.pop_back())
+}
 
 /// Thread-safe ring buffer that retains recent events for history replay.
 pub struct EventBuffer {
@@ -141,19 +168,62 @@ impl zeroclaw_runtime::observability::Observer for BroadcastObserver {
                 tool,
                 duration,
                 success,
-            } => serde_json::json!({
-                "type": "tool_call",
-                "tool": tool,
-                "duration_ms": duration.as_millis(),
-                "success": success,
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-            }),
-            zeroclaw_runtime::observability::ObserverEvent::ToolCallStart { tool, .. } => {
-                serde_json::json!({
+            } => {
+                let mut obj = serde_json::json!({
+                    "type": "tool_call",
+                    "tool": tool,
+                    "duration_ms": duration.as_millis(),
+                    "success": success,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                });
+                // Surface the most recently dispatched delegate target so the
+                // dashboard can attribute completion events to the right
+                // sub-agent. The end event itself doesn't carry args; we rely
+                // on the LIFO of in-flight starts maintained alongside.
+                if tool == "delegate"
+                    && let Some(target) = consume_inflight_delegate_target()
+                {
+                    obj["target_agent"] = serde_json::Value::String(target);
+                }
+                obj
+            }
+            zeroclaw_runtime::observability::ObserverEvent::ToolCallStart { tool, arguments } => {
+                let mut obj = serde_json::json!({
                     "type": "tool_call_start",
                     "tool": tool,
                     "timestamp": chrono::Utc::now().to_rfc3339(),
-                })
+                });
+                if tool == "delegate"
+                    && let Some(args) = arguments.as_ref()
+                    && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(args)
+                {
+                    if let Some(agent) = parsed.get("agent").and_then(|v| v.as_str()) {
+                        obj["target_agent"] = serde_json::Value::String(agent.to_string());
+                        push_inflight_delegate_target(agent.to_string());
+                    } else if let Some(parallel) =
+                        parsed.get("parallel").and_then(|v| v.as_array())
+                    {
+                        let names: Vec<String> = parallel
+                            .iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect();
+                        if !names.is_empty() {
+                            // For parallel dispatch, expose all targets and
+                            // queue them in order so the matching ToolCall
+                            // ends consume in LIFO.
+                            obj["target_agents"] = serde_json::Value::Array(
+                                names
+                                    .iter()
+                                    .map(|s| serde_json::Value::String(s.clone()))
+                                    .collect(),
+                            );
+                            for n in names {
+                                push_inflight_delegate_target(n);
+                            }
+                        }
+                    }
+                }
+                obj
             }
             zeroclaw_runtime::observability::ObserverEvent::Error { component, message } => {
                 serde_json::json!({

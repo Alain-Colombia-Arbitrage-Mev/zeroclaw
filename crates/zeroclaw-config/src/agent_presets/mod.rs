@@ -58,19 +58,27 @@
 
 mod adr_writer;
 mod architect;
+mod business_developer;
+mod ceo_advisor;
 mod cicd;
 mod coder;
 mod common;
 mod content_creator;
+mod data_analyst;
 mod db_designer;
 mod designer;
 mod devops;
 mod docs;
+mod finance_controller;
+mod growth_hacker;
 mod market_researcher;
 mod marketing;
 mod planner;
+mod pricing_strategist;
+mod product_manager;
 mod qa;
 mod reviewer;
+mod risk_analyst;
 mod scriptwriter;
 mod security;
 mod server_architect;
@@ -78,18 +86,26 @@ mod tester;
 
 pub use self::adr_writer::adr_writer_preset;
 pub use self::architect::architect_preset;
+pub use self::business_developer::business_developer_preset;
+pub use self::ceo_advisor::ceo_advisor_preset;
 pub use self::cicd::cicd_preset;
 pub use self::coder::coder_preset;
 pub use self::content_creator::content_creator_preset;
+pub use self::data_analyst::data_analyst_preset;
 pub use self::db_designer::db_designer_preset;
 pub use self::designer::designer_preset;
 pub use self::devops::devops_preset;
 pub use self::docs::docs_preset;
+pub use self::finance_controller::finance_controller_preset;
+pub use self::growth_hacker::growth_hacker_preset;
 pub use self::market_researcher::market_researcher_preset;
 pub use self::marketing::marketing_preset;
 pub use self::planner::planner_preset;
+pub use self::pricing_strategist::pricing_strategist_preset;
+pub use self::product_manager::product_manager_preset;
 pub use self::qa::qa_preset;
 pub use self::reviewer::reviewer_preset;
+pub use self::risk_analyst::risk_analyst_preset;
 pub use self::scriptwriter::scriptwriter_preset;
 pub use self::security::security_preset;
 pub use self::server_architect::server_architect_preset;
@@ -123,6 +139,14 @@ mod tests {
             ("content_creator", content_creator_preset("openrouter", "x")),
             ("scriptwriter", scriptwriter_preset("openrouter", "x")),
             ("market_researcher", market_researcher_preset("openrouter", "x")),
+            ("business_developer", business_developer_preset("openrouter", "x")),
+            ("product_manager", product_manager_preset("openrouter", "x")),
+            ("growth_hacker", growth_hacker_preset("openrouter", "x")),
+            ("pricing_strategist", pricing_strategist_preset("openrouter", "x")),
+            ("risk_analyst", risk_analyst_preset("openrouter", "x")),
+            ("finance_controller", finance_controller_preset("openrouter", "x")),
+            ("data_analyst", data_analyst_preset("openrouter", "x")),
+            ("ceo_advisor", ceo_advisor_preset("openrouter", "x")),
         ]
     }
 

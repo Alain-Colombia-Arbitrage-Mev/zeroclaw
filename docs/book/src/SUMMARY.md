@@ -82,6 +82,9 @@
 - [Logs & observability](./ops/observability.md)
 - [Troubleshooting](./ops/troubleshooting.md)
 - [Network deployment](./ops/network-deployment.md)
+- [Self-hosting on Hetzner](./ops/hosting-hetzner.md)
+- [Self-hosting on Fly.io](./ops/hosting-flyio.md)
+- [Tauri desktop build](./ops/tauri-desktop-build.md)
 
 # Hardware
 

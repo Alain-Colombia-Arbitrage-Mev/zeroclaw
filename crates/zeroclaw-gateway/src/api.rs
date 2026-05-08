@@ -236,6 +236,62 @@ pub async fn handle_api_tools(
     Json(serde_json::json!({"tools": tools})).into_response()
 }
 
+/// GET /api/agents — list configured delegate sub-agents
+pub async fn handle_api_agents(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+    let mut agents: Vec<serde_json::Value> = config
+        .agents
+        .iter()
+        .map(|(name, cfg)| {
+            let summary = cfg
+                .system_prompt
+                .as_deref()
+                .map(|s| {
+                    let trimmed = s.trim();
+                    let first_line = trimmed.lines().next().unwrap_or("").trim();
+                    if first_line.len() > 200 {
+                        format!("{}…", &first_line[..200])
+                    } else {
+                        first_line.to_string()
+                    }
+                })
+                .unwrap_or_default();
+            serde_json::json!({
+                "name": name,
+                "provider": cfg.provider,
+                "model": cfg.model,
+                "agentic": cfg.agentic,
+                "max_depth": cfg.max_depth,
+                "max_iterations": cfg.max_iterations,
+                "allowed_tools": cfg.allowed_tools,
+                "memory_namespace": cfg.memory_namespace,
+                "skills_directory": cfg.skills_directory,
+                "system_prompt_summary": summary,
+                "has_system_prompt": cfg.system_prompt.is_some(),
+            })
+        })
+        .collect();
+    agents.sort_by(|a, b| {
+        a.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .cmp(b.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+
+    Json(serde_json::json!({
+        "count": agents.len(),
+        "agents": agents,
+    }))
+    .into_response()
+}
+
 /// GET /api/cron — list cron jobs
 pub async fn handle_api_cron_list(
     State(state): State<AppState>,

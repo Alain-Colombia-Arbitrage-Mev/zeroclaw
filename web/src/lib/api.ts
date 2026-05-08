@@ -168,6 +168,33 @@ export function getTools(): Promise<ToolSpec[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Agents
+// ---------------------------------------------------------------------------
+
+export interface AgentInfo {
+  name: string;
+  provider: string;
+  model: string;
+  agentic: boolean;
+  max_depth: number;
+  max_iterations: number;
+  allowed_tools: string[];
+  memory_namespace: string | null;
+  skills_directory: string | null;
+  system_prompt_summary: string;
+  has_system_prompt: boolean;
+}
+
+export function getAgents(): Promise<AgentInfo[]> {
+  return apiFetch<{ agents: AgentInfo[]; count: number } | AgentInfo[]>('/api/agents').then(
+    (data) => {
+      const result = unwrapField(data, 'agents');
+      return Array.isArray(result) ? result : [];
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Cron
 // ---------------------------------------------------------------------------
 

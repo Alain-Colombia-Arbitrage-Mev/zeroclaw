@@ -39,6 +39,7 @@ import {
   type SttProvider,
 } from '../lib/jarvisSettings';
 import { useLocale } from '../lib/i18n';
+import { playJarvisBootSound } from '../lib/jarvisBoot';
 
 /** Fallback Spline scene used when the operator hasn't configured one yet. */
 const DEFAULT_SPLINE_SCENE =
@@ -74,6 +75,11 @@ export default function Jarvis() {
   useEffect(() => {
     if (!showSettings) setActiveProvider(getSttProvider());
   }, [showSettings]);
+
+  // Sci-fi boot chime on mount — synthesised, no asset shipped.
+  useEffect(() => {
+    void playJarvisBootSound();
+  }, []);
 
   const providerLabel = SUPPORTED_STT_PROVIDERS.find((p) => p.value === activeProvider)?.label ?? activeProvider;
 

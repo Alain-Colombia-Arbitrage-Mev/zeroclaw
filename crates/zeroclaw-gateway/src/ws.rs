@@ -185,6 +185,9 @@ async fn handle_socket(
         }
     };
     agent.set_memory_session_id(Some(session_id.clone()));
+    // Route this session's agent events into the SSE broadcast so /orchestrator
+    // can light up the right sub-agent in real time.
+    agent.set_observer(state.observer.clone());
 
     // Hydrate agent from persisted session (if available)
     let mut resumed = false;
