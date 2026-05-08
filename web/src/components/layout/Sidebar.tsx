@@ -16,6 +16,8 @@ import {
   Mic,
   Users,
   Zap,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { t } from '@/lib/i18n';
 
@@ -86,9 +88,10 @@ interface SidebarProps {
   open: boolean;
   onClose: () => void;
   collapsed: boolean;
+  onCollapseToggle?: () => void;
 }
 
-export default function Sidebar({ open, onClose, collapsed }: SidebarProps) {
+export default function Sidebar({ open, onClose, collapsed, onCollapseToggle }: SidebarProps) {
   return (
     <>
       {/* Backdrop — mobile only */}
@@ -105,11 +108,46 @@ export default function Sidebar({ open, onClose, collapsed }: SidebarProps) {
 
       {/* Desktop sidebar — collapsible */}
       <aside
-        className="hidden md:flex fixed top-0 left-0 h-screen flex-col border-r z-50 transition-all duration-300 ease-in-out"
+        className="hidden md:flex fixed top-0 left-0 h-screen flex-col border-r z-50 transition-all duration-300 ease-in-out group/sidebar"
         style={{ background: 'var(--pc-bg-base)', borderColor: 'var(--pc-border)', width: collapsed ? '56px' : '240px' }}
         aria-label={collapsed ? 'Collapsed sidebar' : 'Main sidebar'}
       >
         <SidebarLogo collapsed={collapsed} />
+
+        {/* Collapse toggle — floats on the right edge of the sidebar */}
+        {onCollapseToggle && (
+          <button
+            type="button"
+            onClick={onCollapseToggle}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="absolute top-4 z-10 flex items-center justify-center transition-all"
+            style={{
+              right: '-12px',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              background: 'var(--pc-bg-elevated)',
+              border: '1px solid var(--pc-border)',
+              color: 'var(--pc-text-muted)',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--pc-accent)';
+              e.currentTarget.style.borderColor = 'var(--pc-accent-dim)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--pc-text-muted)';
+              e.currentTarget.style.borderColor = 'var(--pc-border)';
+            }}
+          >
+            {collapsed ? (
+              <ChevronsRight className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            )}
+          </button>
+        )}
+
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
           {navItems.map((item) => (
             <SidebarNavItem

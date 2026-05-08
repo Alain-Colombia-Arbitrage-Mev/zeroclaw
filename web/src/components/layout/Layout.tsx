@@ -34,7 +34,12 @@ export default function Layout() {
   return (
     <div className="min-h-screen text-white" style={{ background: 'var(--pc-bg-base)' }}>
       {/* Fixed sidebar */}
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={collapsed} />
+      <Sidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        collapsed={collapsed}
+        onCollapseToggle={() => setCollapsed((c) => !c)}
+      />
 
       {/* Main area — offset by sidebar width on desktop, full-width on mobile */}
       <div
