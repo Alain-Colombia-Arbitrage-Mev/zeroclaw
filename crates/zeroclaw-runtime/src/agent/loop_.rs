@@ -348,8 +348,39 @@ const ROLE_PREFERRED_CATEGORIES: &[(&str, &[&str])] = &[
     ("customer_success", &["hormozi", "persuasion"]),
     // Strategy synthesis
     ("ceo_advisor", &["hormozi", "persuasion"]),
-    ("cfo_advisor", &["hormozi"]),
-    // Engineering / risk roles get no boost — corpus isn't useful to them
+    ("cfo_advisor", &["hormozi", "regulatory_finance"]),
+    // Regulated-vertical counsel — pull from the indexed legal corpora
+    (
+        "fintech_counsel",
+        &[
+            "regulatory_finance",
+            "regulatory_crypto",
+            "regulatory_blockchain",
+        ],
+    ),
+    (
+        "esg_energy_counsel",
+        &["regulatory_energy"],
+    ),
+    (
+        "legal_compliance",
+        &[
+            "regulatory_finance",
+            "regulatory_crypto",
+            "regulatory_blockchain",
+            "regulatory_energy",
+        ],
+    ),
+    (
+        "risk_analyst",
+        &[
+            "regulatory_finance",
+            "regulatory_crypto",
+            "regulatory_blockchain",
+            "regulatory_energy",
+        ],
+    ),
+    // Engineering roles get no boost — corpus isn't useful to them
 ];
 
 const ROLE_BOOST_FACTOR: f64 = 1.5;

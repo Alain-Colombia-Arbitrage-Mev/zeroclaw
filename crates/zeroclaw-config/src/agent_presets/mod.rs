@@ -76,7 +76,9 @@ mod db_designer;
 mod designer;
 mod devops;
 mod docs;
+mod esg_energy_counsel;
 mod finance_controller;
+mod fintech_counsel;
 mod growth_hacker;
 mod idea_generator;
 mod idea_validator;
@@ -117,7 +119,9 @@ pub use self::db_designer::db_designer_preset;
 pub use self::designer::designer_preset;
 pub use self::devops::devops_preset;
 pub use self::docs::docs_preset;
+pub use self::esg_energy_counsel::esg_energy_counsel_preset;
 pub use self::finance_controller::finance_controller_preset;
+pub use self::fintech_counsel::fintech_counsel_preset;
 pub use self::growth_hacker::growth_hacker_preset;
 pub use self::idea_generator::idea_generator_preset;
 pub use self::idea_validator::idea_validator_preset;
@@ -189,6 +193,8 @@ mod tests {
             ("legal_compliance", legal_compliance_preset("openrouter", "x")),
             ("copywriter", copywriter_preset("openrouter", "x")),
             ("negotiator", negotiator_preset("openrouter", "x")),
+            ("fintech_counsel", fintech_counsel_preset("openrouter", "x")),
+            ("esg_energy_counsel", esg_energy_counsel_preset("openrouter", "x")),
         ]
     }
 
