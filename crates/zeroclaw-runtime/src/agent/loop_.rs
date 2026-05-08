@@ -319,22 +319,110 @@ fn autosave_memory_key(prefix: &str) -> String {
     format!("{prefix}_{}", Uuid::new_v4())
 }
 
+/// Categories that each agent role pulls from preferentially. When
+/// `build_context` is called with a `role`, recalled memory entries
+/// whose `MemoryCategory::Custom(name)` matches one of these get a
+/// score multiplier so they bubble above general conversational
+/// memory in the [Memory context] block.
+///
+/// Conservative bias (1.5×) — strong enough to surface the right
+/// corpus, weak enough that genuinely high-similarity general
+/// matches still survive.
+const ROLE_PREFERRED_CATEGORIES: &[(&str, &[&str])] = &[
+    // Persuasion-heavy roles
+    ("copywriter", &["persuasion", "hormozi"]),
+    ("negotiator", &["persuasion"]),
+    ("marketing", &["persuasion", "hormozi"]),
+    ("growth_hacker", &["persuasion", "hormozi"]),
+    ("content_creator", &["persuasion", "hormozi"]),
+    ("scriptwriter", &["persuasion"]),
+    // Offer / pricing roles — Hormozi-heavy
+    ("pricing_strategist", &["hormozi", "persuasion"]),
+    ("business_developer", &["hormozi"]),
+    ("idea_generator", &["hormozi", "library"]),
+    ("idea_validator", &["hormozi"]),
+    ("competitor_analyst", &["hormozi"]),
+    // Sales — both
+    ("sdr_outbound", &["persuasion", "hormozi"]),
+    ("account_executive", &["persuasion", "hormozi"]),
+    ("customer_success", &["hormozi", "persuasion"]),
+    // Strategy synthesis
+    ("ceo_advisor", &["hormozi", "persuasion"]),
+    ("cfo_advisor", &["hormozi"]),
+    // Engineering / risk roles get no boost — corpus isn't useful to them
+];
+
+const ROLE_BOOST_FACTOR: f64 = 1.5;
+
+fn preferred_categories_for(role: Option<&str>) -> &'static [&'static str] {
+    let Some(r) = role else {
+        return &[];
+    };
+    for (name, cats) in ROLE_PREFERRED_CATEGORIES {
+        if *name == r {
+            return cats;
+        }
+    }
+    &[]
+}
+
 /// Build context preamble by searching memory for relevant entries.
 /// Entries with a hybrid score below `min_relevance_score` are dropped to
 /// prevent unrelated memories from bleeding into the conversation.
 /// Core memories are exempt from time decay (evergreen).
+///
+/// When `role` is set, entries whose category matches the role's
+/// preferred set get a `ROLE_BOOST_FACTOR` multiplier on their score
+/// before relevance filtering — this surfaces corpus chunks ahead of
+/// general conversation memory for specialist sub-agents.
 async fn build_context(
     mem: &dyn Memory,
     user_msg: &str,
     min_relevance_score: f64,
     session_id: Option<&str>,
 ) -> String {
+    build_context_for_role(mem, user_msg, min_relevance_score, session_id, None).await
+}
+
+async fn build_context_for_role(
+    mem: &dyn Memory,
+    user_msg: &str,
+    min_relevance_score: f64,
+    session_id: Option<&str>,
+    role: Option<&str>,
+) -> String {
     let mut context = String::new();
 
-    // Pull relevant memories for this message
-    if let Ok(mut entries) = mem.recall(user_msg, 5, session_id, None, None).await {
+    // Over-fetch when a role is set so the boost has room to reorder.
+    let pull = if role.is_some() { 10 } else { 5 };
+
+    if let Ok(mut entries) = mem.recall(user_msg, pull, session_id, None, None).await {
         // Apply time decay: older non-Core memories score lower
         decay::apply_time_decay(&mut entries, decay::DEFAULT_HALF_LIFE_DAYS);
+
+        // Role-aware category boost. A multiplier on the relevance
+        // score nudges corpus entries ahead of conversation memory
+        // without hard-filtering the latter out.
+        let preferred = preferred_categories_for(role);
+        if !preferred.is_empty() {
+            for e in entries.iter_mut() {
+                let cat_str = format!("{:?}", e.category).to_lowercase();
+                if preferred.iter().any(|c| cat_str.contains(c)) {
+                    if let Some(s) = e.score {
+                        e.score = Some(s * ROLE_BOOST_FACTOR);
+                    }
+                }
+            }
+            // Re-sort by boosted score so the top of the list reflects
+            // the new ranking before truncation.
+            entries.sort_by(|a, b| {
+                b.score
+                    .unwrap_or(0.0)
+                    .partial_cmp(&a.score.unwrap_or(0.0))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            entries.truncate(5);
+        }
 
         let relevant: Vec<_> = entries
             .iter()
