@@ -18,6 +18,7 @@
 
 pub mod audit;
 pub mod backend;
+pub mod bm25;
 pub mod chunker;
 pub mod conflict;
 pub mod consolidation;
@@ -422,11 +423,14 @@ pub fn create_memory_with_storage_and_routes(
             url,
             collection
         );
-        return Ok(Box::new(QdrantMemory::new_lazy(
+        return Ok(Box::new(QdrantMemory::new_lazy_with_search(
             &url,
             &collection,
             qdrant_api_key,
             embedder,
+            config.search_mode.clone(),
+            config.vector_weight as f32,
+            config.keyword_weight as f32,
         )));
     }
 

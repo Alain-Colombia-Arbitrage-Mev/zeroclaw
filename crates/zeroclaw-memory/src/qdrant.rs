@@ -1,5 +1,7 @@
+use super::bm25::Bm25Scorer;
 use super::embeddings::EmbeddingProvider;
 use super::traits::{Memory, MemoryCategory, MemoryEntry};
+use super::vector;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::Utc;
@@ -7,11 +9,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 use uuid::Uuid;
+use zeroclaw_config::schema::SearchMode;
 
 /// Qdrant vector database memory backend.
 ///
 /// Uses Qdrant's REST API for vector storage and semantic search.
 /// Requires an embedding provider for converting text to vectors.
+///
+/// When `search_mode = "hybrid"` (default), the recall path over-fetches
+/// dense candidates from Qdrant, scores them with an in-memory BM25
+/// pass, and fuses both with `keyword_weight` / `vector_weight`.
 pub struct QdrantMemory {
     client: reqwest::Client,
     base_url: String,
@@ -20,6 +27,15 @@ pub struct QdrantMemory {
     embedder: Arc<dyn EmbeddingProvider>,
     /// Tracks whether collection has been initialized (lazy init for sync factory).
     initialized: OnceCell<()>,
+    /// Search strategy: dense-only / bm25-only / hybrid blend.
+    search_mode: SearchMode,
+    /// Weight applied to the normalized cosine-similarity score.
+    vector_weight: f32,
+    /// Weight applied to the normalized BM25 keyword score.
+    keyword_weight: f32,
+    /// How many dense candidates to over-fetch before BM25 re-ranking.
+    /// Defaults to 3× the recall limit, capped at 50.
+    over_fetch_factor: usize,
 }
 
 impl QdrantMemory {
@@ -55,6 +71,28 @@ impl QdrantMemory {
         api_key: Option<String>,
         embedder: Arc<dyn EmbeddingProvider>,
     ) -> Self {
+        Self::new_lazy_with_search(
+            url,
+            collection,
+            api_key,
+            embedder,
+            SearchMode::default(),
+            0.7,
+            0.3,
+        )
+    }
+
+    /// Construct with explicit hybrid-search settings. Used by the
+    /// memory factory when `[memory] search_mode` is configured.
+    pub fn new_lazy_with_search(
+        url: &str,
+        collection: &str,
+        api_key: Option<String>,
+        embedder: Arc<dyn EmbeddingProvider>,
+        search_mode: SearchMode,
+        vector_weight: f32,
+        keyword_weight: f32,
+    ) -> Self {
         let base_url = url.trim_end_matches('/').to_string();
         let client = zeroclaw_config::schema::build_runtime_proxy_client("memory.qdrant");
 
@@ -65,6 +103,10 @@ impl QdrantMemory {
             api_key,
             embedder,
             initialized: OnceCell::new(),
+            search_mode,
+            vector_weight,
+            keyword_weight,
+            over_fetch_factor: 3,
         }
     }
 
@@ -326,9 +368,19 @@ impl Memory for QdrantMemory {
             })
         });
 
+        // Over-fetch dense candidates so BM25 has a richer batch to
+        // re-rank when hybrid search is enabled. Pure-embedding mode
+        // skips the over-fetch and returns the top `limit` directly.
+        let dense_limit = match self.search_mode {
+            SearchMode::Embedding => limit,
+            SearchMode::Hybrid | SearchMode::Bm25 => {
+                (limit * self.over_fetch_factor).min(50)
+            }
+        };
+
         let mut search_body = serde_json::json!({
             "vector": embedding,
-            "limit": limit,
+            "limit": dense_limit,
             "with_payload": true
         });
 
@@ -380,6 +432,59 @@ impl Memory for QdrantMemory {
             })
             .collect();
 
+        // ── Hybrid re-ranking with BM25 ─────────────────────────────
+        // Run BM25 over the over-fetched batch in-memory and merge
+        // with the dense scores using `vector::hybrid_merge`. For
+        // pure-embedding mode the dense ranking is already final.
+        if !matches!(self.search_mode, SearchMode::Embedding) && entries.len() > 1 {
+            // Build (id, content) pairs for BM25.
+            let docs: Vec<(&str, &str)> = entries
+                .iter()
+                .map(|e| (e.id.as_str(), e.content.as_str()))
+                .collect();
+            let scorer = Bm25Scorer::default();
+            let bm25_scores: Vec<(String, f32)> = scorer.rank(query, &docs);
+
+            // Dense scores for the SAME entries, in id order.
+            let dense_scores: Vec<(String, f32)> = entries
+                .iter()
+                .map(|e| (e.id.clone(), e.score.unwrap_or(0.0) as f32))
+                .collect();
+
+            let merged = match self.search_mode {
+                SearchMode::Bm25 => vector::hybrid_merge(
+                    &[],
+                    &bm25_scores,
+                    self.vector_weight,
+                    self.keyword_weight,
+                    limit,
+                ),
+                _ => vector::hybrid_merge(
+                    &dense_scores,
+                    &bm25_scores,
+                    self.vector_weight,
+                    self.keyword_weight,
+                    limit,
+                ),
+            };
+
+            // Reorder + truncate `entries` to match merged ranking.
+            let order: std::collections::HashMap<String, usize> = merged
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s.id.clone(), i))
+                .collect();
+            let merged_score: std::collections::HashMap<String, f32> =
+                merged.iter().map(|s| (s.id.clone(), s.final_score)).collect();
+            entries.retain(|e| order.contains_key(&e.id));
+            entries.sort_by_key(|e| order.get(&e.id).copied().unwrap_or(usize::MAX));
+            for e in entries.iter_mut() {
+                if let Some(s) = merged_score.get(&e.id) {
+                    e.score = Some(*s as f64);
+                }
+            }
+        }
+
         // Filter by time range if specified
         if let Some(s) = since {
             entries.retain(|e| e.timestamp.as_str() >= s);
@@ -387,6 +492,10 @@ impl Memory for QdrantMemory {
         if let Some(u) = until {
             entries.retain(|e| e.timestamp.as_str() <= u);
         }
+
+        // Final cap at `limit` (over-fetch may still leave us with extras
+        // when zero-overlap BM25 drops some candidates entirely).
+        entries.truncate(limit);
 
         Ok(entries)
     }
