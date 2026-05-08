@@ -236,6 +236,135 @@ pub async fn handle_api_tools(
     Json(serde_json::json!({"tools": tools})).into_response()
 }
 
+/// GET /api/tenants — list all tenants
+pub async fn handle_api_tenants_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let tenants = state.tenants.list();
+    Json(serde_json::json!({
+        "count": tenants.len(),
+        "tenants": tenants,
+        "categories": ["saas", "marketplace", "fintech", "ecommerce", "agency", "hardware", "media", "ai", "other"],
+        "stages": ["ideation", "validation", "mvp", "launch", "growth", "scale"],
+    }))
+    .into_response()
+}
+
+#[derive(serde::Deserialize)]
+pub struct TenantCreateBody {
+    pub id: Option<String>,
+    pub name: String,
+    pub category: super::tenants::TenantCategory,
+    #[serde(default)]
+    pub stage: Option<super::tenants::TenantStage>,
+    #[serde(default)]
+    pub mission: Option<String>,
+    #[serde(default)]
+    pub agents: Option<Vec<String>>,
+}
+
+/// POST /api/tenants — create a new tenant
+pub async fn handle_api_tenants_create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<TenantCreateBody>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    let now = chrono::Utc::now();
+    let tenant = super::tenants::Tenant {
+        id: body.id.unwrap_or_default(),
+        name: body.name,
+        category: body.category,
+        stage: body
+            .stage
+            .unwrap_or(super::tenants::TenantStage::Ideation),
+        mission: body.mission.unwrap_or_default(),
+        agents: body.agents.unwrap_or_default(),
+        created_at: now,
+        updated_at: now,
+    };
+    match state.tenants.create(tenant) {
+        Ok(created) => (StatusCode::CREATED, Json(serde_json::json!(created))).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/tenants/{id} — get a tenant by id, including the recommended
+/// agent subset for its category.
+pub async fn handle_api_tenant_get(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    match state.tenants.get(&id) {
+        Some(t) => {
+            let recommended = t.category.recommended_agents();
+            Json(serde_json::json!({
+                "tenant": t,
+                "recommended_agents": recommended,
+            }))
+            .into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("tenant '{id}' not found")})),
+        )
+            .into_response(),
+    }
+}
+
+/// PATCH /api/tenants/{id} — update a tenant
+pub async fn handle_api_tenant_patch(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<super::tenants::TenantPatch>,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    match state.tenants.update(&id, body) {
+        Ok(t) => Json(serde_json::json!(t)).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
+    }
+}
+
+/// DELETE /api/tenants/{id} — remove a tenant
+pub async fn handle_api_tenant_delete(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+    match state.tenants.delete(&id) {
+        Ok(()) => (StatusCode::NO_CONTENT, "").into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
+    }
+}
+
 /// GET /api/agents — list configured delegate sub-agents
 pub async fn handle_api_agents(
     State(state): State<AppState>,

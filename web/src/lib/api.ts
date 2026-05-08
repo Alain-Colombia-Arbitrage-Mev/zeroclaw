@@ -27,6 +27,24 @@ export class UnauthorizedError extends Error {
   }
 }
 
+// Active tenant id — kept in module scope so apiFetch can stamp it
+// onto every request. Updated by TenantContext via the
+// `octopus:tenant-change` window event, which avoids a hard import
+// cycle between the context and the fetch wrapper.
+let activeTenantId: string | null = (() => {
+  try {
+    return localStorage.getItem('octopus_active_tenant');
+  } catch {
+    return null;
+  }
+})();
+if (typeof window !== 'undefined') {
+  window.addEventListener('octopus:tenant-change', (e: Event) => {
+    const detail = (e as CustomEvent<string | null>).detail;
+    activeTenantId = detail ?? null;
+  });
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   options: RequestInit = {},
@@ -36,6 +54,10 @@ export async function apiFetch<T = unknown>(
 
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  if (activeTenantId) {
+    headers.set('X-Octopus-Tenant', activeTenantId);
   }
 
   if (
@@ -183,6 +205,86 @@ export interface AgentInfo {
   skills_directory: string | null;
   system_prompt_summary: string;
   has_system_prompt: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Tenants (multi-tenant company registry)
+// ---------------------------------------------------------------------------
+
+export type TenantCategory =
+  | 'saas'
+  | 'marketplace'
+  | 'fintech'
+  | 'ecommerce'
+  | 'agency'
+  | 'hardware'
+  | 'media'
+  | 'ai'
+  | 'other';
+
+export type TenantStage =
+  | 'ideation'
+  | 'validation'
+  | 'mvp'
+  | 'launch'
+  | 'growth'
+  | 'scale';
+
+export interface Tenant {
+  id: string;
+  name: string;
+  category: TenantCategory;
+  stage: TenantStage;
+  mission: string;
+  agents: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenantsListResponse {
+  count: number;
+  tenants: Tenant[];
+  categories: TenantCategory[];
+  stages: TenantStage[];
+}
+
+export function getTenants(): Promise<TenantsListResponse> {
+  return apiFetch<TenantsListResponse>('/api/tenants');
+}
+
+export function createTenant(body: {
+  name: string;
+  category: TenantCategory;
+  stage?: TenantStage;
+  mission?: string;
+  agents?: string[];
+}): Promise<Tenant> {
+  return apiFetch<Tenant>('/api/tenants', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function getTenant(id: string): Promise<{ tenant: Tenant; recommended_agents: string[] }> {
+  return apiFetch<{ tenant: Tenant; recommended_agents: string[] }>(
+    `/api/tenants/${encodeURIComponent(id)}`,
+  );
+}
+
+export function updateTenant(
+  id: string,
+  patch: Partial<Pick<Tenant, 'name' | 'category' | 'stage' | 'mission' | 'agents'>>,
+): Promise<Tenant> {
+  return apiFetch<Tenant>(`/api/tenants/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteTenant(id: string): Promise<void> {
+  return apiFetch<void>(`/api/tenants/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
 }
 
 export function getAgents(): Promise<AgentInfo[]> {

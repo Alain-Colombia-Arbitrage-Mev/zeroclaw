@@ -21,6 +21,7 @@ pub mod nodes;
 pub mod session_queue;
 pub mod sse;
 pub mod static_files;
+pub mod tenants;
 pub mod tls;
 #[cfg(feature = "gateway-voice-duplex")]
 pub mod voice_duplex;
@@ -375,6 +376,8 @@ pub struct AppState {
     pub web_dist_dir: Option<std::path::PathBuf>,
     /// Session backend for persisting gateway WS chat sessions
     pub session_backend: Option<Arc<dyn SessionBackend>>,
+    /// Multi-tenant company registry (workspace/tenants.json)
+    pub tenants: tenants::TenantRegistry,
     /// Per-session actor queue for serializing concurrent turns
     pub session_queue: Arc<session_queue::SessionActorQueue>,
     /// Device registry for paired device management
@@ -908,6 +911,7 @@ pub async fn run_gateway(
         shutdown_tx,
         node_registry,
         session_backend,
+        tenants: tenants::TenantRegistry::load(&config.workspace_dir),
         session_queue: Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
         device_registry,
         pending_pairings,
@@ -972,6 +976,16 @@ pub async fn run_gateway(
         .route("/api/config", get(api::handle_api_config_get))
         .route("/api/tools", get(api::handle_api_tools))
         .route("/api/agents", get(api::handle_api_agents))
+        .route(
+            "/api/tenants",
+            get(api::handle_api_tenants_list).post(api::handle_api_tenants_create),
+        )
+        .route(
+            "/api/tenants/{id}",
+            get(api::handle_api_tenant_get)
+                .patch(api::handle_api_tenant_patch)
+                .delete(api::handle_api_tenant_delete),
+        )
         .route("/api/cron", get(api::handle_api_cron_list))
         .route("/api/cron", post(api::handle_api_cron_add))
         .route(
@@ -2442,6 +2456,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
@@ -2515,6 +2530,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
@@ -2914,6 +2930,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
@@ -2995,6 +3012,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
@@ -3088,6 +3106,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
@@ -3153,6 +3172,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
@@ -3223,6 +3243,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
@@ -3298,6 +3319,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),
@@ -3370,6 +3392,7 @@ mod tests {
             path_prefix: String::new(),
             web_dist_dir: None,
             session_backend: None,
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             session_queue: std::sync::Arc::new(crate::session_queue::SessionActorQueue::new(
                 8, 30, 600,
             )),

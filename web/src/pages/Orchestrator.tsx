@@ -1,18 +1,33 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+// Orchestrator command center — pixel-art HUD for running an army
+// of autonomous agents across multiple companies. Inspired by 4X /
+// XCOM management screens: each agent is a unit, each tenant is a
+// kingdom, the reactor at the centre is the throne room.
+
+import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
-  Bot,
-  Network,
-  Clock,
-  Zap,
   AlertCircle,
+  Building2,
   CheckCircle2,
+  Clock,
+  Network,
+  Plus,
 } from 'lucide-react';
-import { getAgents, type AgentInfo } from '@/lib/api';
+import {
+  createTenant,
+  deleteTenant,
+  getAgents,
+  type AgentInfo,
+  type Tenant,
+  type TenantCategory,
+  type TenantStage,
+} from '@/lib/api';
 import { SSEClient } from '@/lib/sse';
+import { useTenant } from '@/contexts/TenantContext';
+import { PixelSigil } from '@/components/PixelSigil';
 import type { SSEEvent } from '@/types/api';
 
-type Tab = 'graph' | 'live' | 'timeline';
+type Tab = 'mesh' | 'live' | 'timeline';
 
 interface AgentActivity {
   name: string;
@@ -23,26 +38,117 @@ interface AgentActivity {
 }
 
 const ORCHESTRATOR_NAME = 'orchestrator';
-const STATE_DECAY_MS = 4000; // running → idle if no event for this long
+const STATE_DECAY_MS = 4000;
+
+const DEPARTMENTS: { id: string; label: string; agents: string[] }[] = [
+  {
+    id: 'csuite',
+    label: 'C-SUITE',
+    agents: ['ceo_advisor', 'cto_advisor', 'cfo_advisor'],
+  },
+  {
+    id: 'idea',
+    label: 'IDEA → BUSINESS',
+    agents: [
+      'idea_generator',
+      'idea_validator',
+      'customer_researcher',
+      'competitor_analyst',
+      'market_researcher',
+      'red_teamer',
+      'pivot_strategist',
+    ],
+  },
+  {
+    id: 'business',
+    label: 'BUSINESS / GTM',
+    agents: [
+      'business_developer',
+      'product_manager',
+      'growth_hacker',
+      'pricing_strategist',
+      'marketing',
+      'content_creator',
+      'scriptwriter',
+    ],
+  },
+  {
+    id: 'revenue',
+    label: 'REVENUE',
+    agents: ['sdr_outbound', 'account_executive', 'customer_success'],
+  },
+  {
+    id: 'finance',
+    label: 'FINANCE & RISK',
+    agents: ['finance_controller', 'risk_analyst', 'data_analyst'],
+  },
+  {
+    id: 'compliance',
+    label: 'SECURITY & LEGAL',
+    agents: ['security', 'legal_compliance'],
+  },
+  {
+    id: 'engineering',
+    label: 'ENGINEERING',
+    agents: [
+      'planner',
+      'architect',
+      'server_architect',
+      'db_designer',
+      'adr_writer',
+      'coder',
+      'designer',
+      'reviewer',
+      'tester',
+      'qa',
+      'cicd',
+      'devops',
+      'docs',
+    ],
+  },
+];
 
 function eventAgentNames(e: SSEEvent): string[] {
-  // 1. Explicit target_agent / target_agents from the SSE forwarder
   if (Array.isArray(e.target_agents)) {
-    return e.target_agents.filter((s: unknown): s is string => typeof s === 'string');
+    return e.target_agents.filter(
+      (s: unknown): s is string => typeof s === 'string',
+    );
   }
   if (typeof e.target_agent === 'string') return [e.target_agent];
-  // 2. Generic agent / model fallback
   if (typeof e.agent === 'string') return [e.agent];
   if (typeof e.model === 'string') return [ORCHESTRATOR_NAME];
   return [];
 }
 
+const STAGE_META: Record<TenantStage, { label: string; ordinal: number }> = {
+  ideation: { label: 'IDEATION', ordinal: 0 },
+  validation: { label: 'VALIDATION', ordinal: 1 },
+  mvp: { label: 'MVP', ordinal: 2 },
+  launch: { label: 'LAUNCH', ordinal: 3 },
+  growth: { label: 'GROWTH', ordinal: 4 },
+  scale: { label: 'SCALE', ordinal: 5 },
+};
+
+const CATEGORY_META: Record<TenantCategory, { label: string; tint: string }> = {
+  saas: { label: 'SAAS', tint: '#7DD3FC' },
+  marketplace: { label: 'MARKETPLACE', tint: '#86EFAC' },
+  fintech: { label: 'FINTECH', tint: '#FCD34D' },
+  ecommerce: { label: 'E-COM', tint: '#F9A8D4' },
+  agency: { label: 'AGENCY', tint: '#C084FC' },
+  hardware: { label: 'HARDWARE', tint: '#FDBA74' },
+  media: { label: 'MEDIA', tint: '#A5F3FC' },
+  ai: { label: 'AI', tint: '#FDA4AF' },
+  other: { label: 'OTHER', tint: '#94A3B8' },
+};
+
 export default function Orchestrator() {
+  const { active: activeTenant, tenants, refresh: refreshTenants } = useTenant();
+
   const [tab, setTab] = useState<Tab>(() => {
     try {
-      return (localStorage.getItem('octopus_orch_tab') as Tab) || 'graph';
+      return (localStorage.getItem('octopus_orch_tab') as Tab) || 'mesh';
     } catch {
-      return 'graph';
+      return 'mesh';
     }
   });
   const [agents, setAgents] = useState<AgentInfo[]>([]);
@@ -51,11 +157,10 @@ export default function Orchestrator() {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [showNewTenant, setShowNewTenant] = useState(false);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 800, h: 600 });
-
-  // Persist tab
+  // ─── Tab persistence ─────────────────────────────────────────────
   useEffect(() => {
     try {
       localStorage.setItem('octopus_orch_tab', tab);
@@ -64,7 +169,7 @@ export default function Orchestrator() {
     }
   }, [tab]);
 
-  // Fetch agent catalog
+  // ─── Agent catalog ───────────────────────────────────────────────
   useEffect(() => {
     getAgents()
       .then((list) => {
@@ -92,30 +197,15 @@ export default function Orchestrator() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Container size for graph
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || tab !== 'graph') return;
-    const measure = () => {
-      const r = el.getBoundingClientRect();
-      setSize({ w: Math.max(320, r.width), h: Math.max(360, r.height) });
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [tab]);
-
-  // SSE connection
+  // ─── SSE ─────────────────────────────────────────────────────────
   useEffect(() => {
     const client = new SSEClient();
     client.onConnect = () => setConnected(true);
     client.onError = () => setConnected(false);
     client.onEvent = (e) => {
-      setEvents((prev) => {
-        const next = [...prev, { ...e, _rxAt: Date.now() } as SSEEvent].slice(-200);
-        return next;
-      });
+      setEvents((prev) =>
+        [...prev, { ...e, _rxAt: Date.now() } as SSEEvent].slice(-200),
+      );
 
       const names = eventAgentNames(e);
       if (names.length === 0) return;
@@ -164,7 +254,7 @@ export default function Orchestrator() {
     return () => client.disconnect();
   }, []);
 
-  // Decay running → idle when no event for STATE_DECAY_MS
+  // ─── Decay running → idle ────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => {
       setActivity((prev) => {
@@ -188,94 +278,298 @@ export default function Orchestrator() {
     return () => clearInterval(interval);
   }, []);
 
+  // ─── Recommended agents per tenant category ──────────────────────
+  const [recommended, setRecommended] = useState<string[]>([]);
+  useEffect(() => {
+    if (!activeTenant) {
+      setRecommended([]);
+      return;
+    }
+    // The /api/tenants/{id} endpoint also returns recommended_agents,
+    // but we already have category locally — recompute lightly.
+    // (The truth lives on the server; this is just for first paint.)
+    const map: Partial<Record<TenantCategory, string[]>> = {
+      saas: [
+        'product_manager', 'growth_hacker', 'pricing_strategist',
+        'sdr_outbound', 'account_executive', 'customer_success',
+        'cto_advisor', 'data_analyst', 'finance_controller',
+        'ceo_advisor', 'marketing', 'coder', 'tester',
+      ],
+      fintech: [
+        'risk_analyst', 'legal_compliance', 'security',
+        'finance_controller', 'cfo_advisor', 'data_analyst',
+        'product_manager', 'account_executive', 'customer_success',
+        'ceo_advisor', 'architect', 'db_designer',
+      ],
+      marketplace: [
+        'business_developer', 'product_manager', 'growth_hacker',
+        'customer_researcher', 'customer_success',
+        'data_analyst', 'risk_analyst', 'legal_compliance',
+        'finance_controller', 'ceo_advisor', 'marketing',
+      ],
+      ecommerce: [
+        'marketing', 'growth_hacker', 'content_creator',
+        'pricing_strategist', 'customer_success', 'data_analyst',
+        'business_developer', 'finance_controller', 'ceo_advisor',
+        'designer', 'scriptwriter',
+      ],
+      agency: [
+        'business_developer', 'account_executive', 'customer_success',
+        'content_creator', 'marketing', 'scriptwriter',
+        'finance_controller', 'legal_compliance', 'ceo_advisor',
+        'designer', 'product_manager',
+      ],
+      hardware: [
+        'architect', 'server_architect', 'designer',
+        'risk_analyst', 'legal_compliance', 'security',
+        'business_developer', 'pricing_strategist',
+        'finance_controller', 'cfo_advisor', 'ceo_advisor',
+        'market_researcher',
+      ],
+      media: [
+        'content_creator', 'scriptwriter', 'marketing',
+        'growth_hacker', 'data_analyst', 'designer',
+        'business_developer', 'ceo_advisor', 'pricing_strategist',
+        'customer_researcher',
+      ],
+      ai: [
+        'cto_advisor', 'architect', 'data_analyst',
+        'product_manager', 'growth_hacker', 'pricing_strategist',
+        'risk_analyst', 'legal_compliance', 'ceo_advisor',
+        'coder', 'tester', 'security',
+      ],
+      other: [
+        'idea_generator', 'idea_validator', 'customer_researcher',
+        'competitor_analyst', 'red_teamer', 'pivot_strategist',
+        'product_manager', 'ceo_advisor',
+      ],
+    };
+    setRecommended(map[activeTenant.category] ?? []);
+  }, [activeTenant]);
+
+  const runningAgents = useMemo(
+    () =>
+      Object.values(activity)
+        .filter((a) => a.state === 'running')
+        .map((a) => a.name),
+    [activity],
+  );
+  const totalRuns = useMemo(
+    () => Object.values(activity).reduce((s, a) => s + a.runs, 0),
+    [activity],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div
           className="h-8 w-8 border-2 rounded-full animate-spin"
-          style={{ borderColor: 'var(--pc-border)', borderTopColor: 'var(--pc-accent)' }}
+          style={{
+            borderColor: 'rgba(125, 211, 252, 0.2)',
+            borderTopColor: '#7DD3FC',
+          }}
         />
       </div>
     );
   }
 
-  const runningCount = Object.values(activity).filter((a) => a.state === 'running').length;
-  const totalRuns = Object.values(activity).reduce((s, a) => s + a.runs, 0);
-  const runningAgents = Object.values(activity)
-    .filter((a) => a.state === 'running')
-    .map((a) => a.name);
-  const hasEverFiredEvent = events.length > 0;
+  return (
+    <div
+      className="p-5 space-y-4 animate-fade-in min-h-screen"
+      style={{ background: '#03060c' }}
+    >
+      {/* ─── HUD bar ─────────────────────────────────────────────── */}
+      <CommandHud
+        activeTenant={activeTenant}
+        connected={connected}
+        runningAgents={runningAgents}
+        totalRuns={totalRuns}
+        agentCount={agents.length}
+        tab={tab}
+        onTab={setTab}
+        onNewTenant={() => setShowNewTenant(true)}
+      />
+
+      {!activeTenant && tenants.length === 0 && (
+        <NoTenantBanner onCreate={() => setShowNewTenant(true)} />
+      )}
+
+      {error && (
+        <div
+          className="rounded border p-3 text-xs font-mono"
+          style={{
+            background: 'rgba(239, 68, 68, 0.08)',
+            borderColor: 'rgba(239, 68, 68, 0.4)',
+            color: '#FCA5A5',
+            letterSpacing: '0.1em',
+          }}
+        >
+          ERR · {error}
+        </div>
+      )}
+
+      {tab === 'mesh' && (
+        <MeshView
+          agents={agents}
+          activity={activity}
+          recommended={recommended}
+          tenant={activeTenant}
+          selected={selected}
+          onSelect={setSelected}
+        />
+      )}
+
+      {tab === 'live' && <LiveView events={events} activity={activity} />}
+
+      {tab === 'timeline' && <TimelineView events={events} agents={agents} />}
+
+      {showNewTenant && (
+        <TenantCreateModal
+          onClose={() => setShowNewTenant(false)}
+          onCreated={async () => {
+            await refreshTenants();
+            setShowNewTenant(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── HUD command bar ─────────────────────────────────────────────────
+
+function CommandHud({
+  activeTenant,
+  connected,
+  runningAgents,
+  totalRuns,
+  agentCount,
+  tab,
+  onTab,
+  onNewTenant,
+}: {
+  activeTenant: Tenant | null;
+  connected: boolean;
+  runningAgents: string[];
+  totalRuns: number;
+  agentCount: number;
+  tab: Tab;
+  onTab: (t: Tab) => void;
+  onNewTenant: () => void;
+}) {
+  const stage = activeTenant ? STAGE_META[activeTenant.stage] : null;
+  const cat = activeTenant ? CATEGORY_META[activeTenant.category] : null;
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in" style={{ background: '#03060c' }}>
-      {/* META-FORGE style header bar */}
-      <div
-        className="flex items-end justify-between gap-4 flex-wrap pb-4 border-b"
-        style={{ borderColor: 'rgba(125, 211, 252, 0.12)' }}
-      >
-        <div>
-          <p
-            className="text-[10px] mb-1.5"
+    <div
+      className="rounded border p-4"
+      style={{
+        background:
+          'linear-gradient(180deg, rgba(12, 16, 24, 0.95), rgba(3, 6, 12, 1))',
+        borderColor: 'rgba(125, 211, 252, 0.2)',
+        boxShadow: 'inset 0 0 24px rgba(125, 211, 252, 0.04)',
+      }}
+    >
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        {/* ── Title block ── */}
+        <div className="flex items-center gap-4">
+          <div
+            className="flex items-center justify-center"
             style={{
-              color: '#5BA8D9',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-              letterSpacing: '0.4em',
+              width: 56,
+              height: 56,
+              background: 'rgba(3, 6, 12, 1)',
+              border: '2px solid rgba(125, 211, 252, 0.4)',
+              boxShadow: '0 0 16px rgba(125, 211, 252, 0.2)',
             }}
           >
-            OCTOPUS &nbsp;·&nbsp; AGENT MESH
-          </p>
-          <h1
-            className="text-3xl flex items-center gap-3"
-            style={{
-              color: '#BAE6FD',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-              letterSpacing: '0.18em',
-              fontWeight: 500,
-            }}
-          >
-            <Zap className="h-7 w-7" style={{ color: '#7DD3FC' }} />
-            REACTOR CORE
-          </h1>
-          <p
-            className="text-xs mt-2"
-            style={{
-              color: '#5BA8D9',
-              fontFamily: 'ui-monospace, monospace',
-              letterSpacing: '0.1em',
-            }}
-          >
-            {agents.length} sub-agents · {runningCount} running · {totalRuns} runs · SSE {connected ? 'online' : 'reconnecting'}
-          </p>
-          {runningAgents.length > 0 && (
+            <PixelSigil name={ORCHESTRATOR_NAME} size={40} state="idle" />
+          </div>
+          <div>
             <p
-              className="text-xs mt-2 inline-flex items-center gap-2 px-2 py-1 rounded"
+              className="text-[10px]"
               style={{
-                color: '#BAE6FD',
-                background: 'rgba(125, 211, 252, 0.08)',
-                border: '1px solid rgba(125, 211, 252, 0.3)',
+                color: '#5BA8D9',
                 fontFamily: 'ui-monospace, monospace',
-                letterSpacing: '0.1em',
-                boxShadow: '0 0 12px rgba(125, 211, 252, 0.2)',
+                letterSpacing: '0.4em',
               }}
             >
-              <span
-                className="inline-block h-1.5 w-1.5 rounded-full"
-                style={{
-                  background: '#7DD3FC',
-                  boxShadow: '0 0 6px #7DD3FC',
-                  animation: 'pulse 1.4s ease-in-out infinite',
-                }}
-              />
-              EXECUTING → {runningAgents.join(' + ')}
+              OCTOPUS · COMMAND CENTER
             </p>
-          )}
+            <h1
+              className="text-2xl"
+              style={{
+                color: '#BAE6FD',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                letterSpacing: '0.18em',
+                fontWeight: 500,
+              }}
+            >
+              REACTOR · CORE
+            </h1>
+          </div>
         </div>
+
+        {/* ── Tenant card ── */}
+        {activeTenant && stage && cat ? (
+          <div
+            className="flex items-center gap-4 px-4 py-2 rounded border"
+            style={{
+              background: 'rgba(3, 6, 12, 0.7)',
+              borderColor: cat.tint + '66',
+              boxShadow: `0 0 12px ${cat.tint}22`,
+            }}
+          >
+            <Building2 className="h-5 w-5" style={{ color: cat.tint }} />
+            <div>
+              <p
+                className="text-[9px]"
+                style={{
+                  color: cat.tint,
+                  fontFamily: 'ui-monospace, monospace',
+                  letterSpacing: '0.3em',
+                }}
+              >
+                {cat.label}
+              </p>
+              <p
+                className="text-sm"
+                style={{
+                  color: '#BAE6FD',
+                  fontFamily: 'ui-monospace, monospace',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                {activeTenant.name}
+              </p>
+            </div>
+            <StageMeter stage={stage} />
+          </div>
+        ) : (
+          <button
+            onClick={onNewTenant}
+            className="flex items-center gap-2 px-3 py-2 rounded border text-xs"
+            style={{
+              background: 'rgba(125, 211, 252, 0.08)',
+              borderColor: 'rgba(125, 211, 252, 0.4)',
+              color: '#7DD3FC',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.2em',
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" /> NEW COMPANY
+          </button>
+        )}
+
+        {/* ── Live stats + tabs ── */}
         <div className="flex items-center gap-3 flex-wrap">
           <span
-            className="inline-flex items-center gap-2 text-[10px] px-2.5 py-1.5 rounded border"
+            className="inline-flex items-center gap-2 text-[10px] px-2 py-1.5 rounded border"
             style={{
               color: connected ? '#7DD3FC' : '#5BA8D9',
-              borderColor: connected ? 'rgba(125, 211, 252, 0.4)' : 'rgba(91, 168, 217, 0.2)',
+              borderColor: connected
+                ? 'rgba(125, 211, 252, 0.4)'
+                : 'rgba(91, 168, 217, 0.2)',
               background: connected ? 'rgba(125, 211, 252, 0.06)' : 'transparent',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.2em',
@@ -286,11 +580,12 @@ export default function Orchestrator() {
               style={{
                 background: connected ? '#7DD3FC' : '#5BA8D9',
                 boxShadow: connected ? '0 0 8px #7DD3FC' : undefined,
-                animation: connected ? 'pulse 2s ease-in-out infinite' : undefined,
+                animation: connected ? 'pulse 2s infinite' : undefined,
               }}
             />
             {connected ? 'LIVE' : 'WAIT'}
           </span>
+
           <div
             className="inline-flex rounded p-0.5 border"
             style={{
@@ -301,9 +596,9 @@ export default function Orchestrator() {
           >
             {(
               [
-                ['graph', 'GRAPH', Network],
+                ['mesh', 'MESH', Network],
                 ['live', 'LIVE', Activity],
-                ['timeline', 'TIMELINE', Clock],
+                ['timeline', 'TIME', Clock],
               ] as const
             ).map(([id, label, Icon]) => {
               const active = tab === id;
@@ -312,17 +607,21 @@ export default function Orchestrator() {
                   key={id}
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setTab(id)}
-                  className="px-3 py-1.5 text-[10px] inline-flex items-center gap-1.5 transition-all"
+                  onClick={() => onTab(id)}
+                  className="px-3 py-1.5 text-[10px] inline-flex items-center gap-1.5"
                   style={{
-                    background: active ? 'rgba(125, 211, 252, 0.12)' : 'transparent',
+                    background: active
+                      ? 'rgba(125, 211, 252, 0.12)'
+                      : 'transparent',
                     color: active ? '#BAE6FD' : '#5BA8D9',
                     border: active
                       ? '1px solid rgba(125, 211, 252, 0.4)'
                       : '1px solid transparent',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.2em',
-                    boxShadow: active ? '0 0 12px rgba(125, 211, 252, 0.15)' : undefined,
+                    boxShadow: active
+                      ? '0 0 12px rgba(125, 211, 252, 0.15)'
+                      : undefined,
                   }}
                 >
                   <Icon className="h-3 w-3" /> {label}
@@ -333,393 +632,493 @@ export default function Orchestrator() {
         </div>
       </div>
 
-      {error && (
-        <div
-          className="rounded border p-4"
-          style={{
-            background: 'rgba(239, 68, 68, 0.08)',
-            borderColor: 'rgba(239, 68, 68, 0.2)',
-            color: '#f87171',
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {tab === 'graph' && (
-        <div
-          ref={containerRef}
-          className="rounded border relative overflow-hidden"
-          style={{
-            background:
-              'radial-gradient(ellipse at center, rgba(91, 168, 217, 0.05) 0%, rgba(3, 6, 12, 1) 70%)',
-            borderColor: 'rgba(125, 211, 252, 0.15)',
-            height: 'calc(100vh - 240px)',
-            minHeight: '520px',
-          }}
-        >
-          <ReactorCore agents={agents} activity={activity} width={size.w} height={size.h} />
-          {!hasEverFiredEvent && (
-            <div
-              className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-3 rounded border max-w-md text-center pointer-events-none"
-              style={{
-                background: 'rgba(3, 6, 12, 0.85)',
-                borderColor: 'rgba(125, 211, 252, 0.2)',
-                color: '#5BA8D9',
-                fontFamily: 'ui-monospace, monospace',
-                letterSpacing: '0.1em',
-                fontSize: '11px',
-              }}
-            >
-              <div style={{ color: '#BAE6FD', marginBottom: '4px' }}>
-                STANDBY · NO ACTIVITY
-              </div>
-              <div>
-                Open <span style={{ color: '#7DD3FC' }}>/agent</span> and ask the
-                orchestrator to delegate. The reactor will light up the
-                sub-agent it routes to.
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'live' && <LiveView events={events} activity={activity} agents={agents} />}
-
-      {tab === 'timeline' && <TimelineView events={events} agents={agents} />}
+      {/* ── Stat strip ── */}
+      <div
+        className="mt-4 pt-3 grid grid-cols-2 md:grid-cols-4 gap-3 border-t"
+        style={{ borderColor: 'rgba(125, 211, 252, 0.1)' }}
+      >
+        <Stat label="AGENTS" value={agentCount.toString()} />
+        <Stat
+          label="RUNNING"
+          value={runningAgents.length.toString()}
+          accent={runningAgents.length > 0}
+        />
+        <Stat label="TOTAL RUNS" value={totalRuns.toString()} />
+        <Stat
+          label="EXECUTING"
+          value={
+            runningAgents.length > 0 ? runningAgents.slice(0, 2).join(' + ') : '—'
+          }
+          accent={runningAgents.length > 0}
+          mono
+        />
+      </div>
     </div>
   );
 }
 
-// ─── Reactor Core (radial graph in META-FORGE language) ─────────────────
-
-function ReactorCore({
-  agents,
-  activity,
-  width,
-  height,
+function Stat({
+  label,
+  value,
+  accent,
+  mono,
 }: {
-  agents: AgentInfo[];
-  activity: Record<string, AgentActivity>;
-  width: number;
-  height: number;
+  label: string;
+  value: string;
+  accent?: boolean;
+  mono?: boolean;
 }) {
-  const cx = width / 2;
-  const cy = height / 2 - 20; // shift up to leave room for label
-  const radius = Math.min(width, height) * 0.36;
-
-  const placed = useMemo(() => {
-    return agents.map((agent, i) => {
-      const angle = (i / agents.length) * Math.PI * 2 - Math.PI / 2;
-      return {
-        agent,
-        angle,
-        x: cx + Math.cos(angle) * radius,
-        y: cy + Math.sin(angle) * radius,
-      };
-    });
-  }, [agents, cx, cy, radius]);
-
-  const stateColor = (s: AgentActivity['state']) => {
-    switch (s) {
-      case 'running':
-        return '#7DD3FC';
-      case 'done':
-        return '#86EFAC';
-      case 'error':
-        return '#F87171';
-      default:
-        return '#5BA8D9';
-    }
-  };
-
-  const orchestratorState = activity[ORCHESTRATOR_NAME]?.state ?? 'idle';
-  const coreActive =
-    orchestratorState === 'running' ||
-    Object.values(activity).some((a) => a.state === 'running');
-
-  // Curved bezier from core to node — outward-bulging arc that reads like
-  // an arm of the META-FORGE reactor.
-  const armPath = (x: number, y: number, angle: number) => {
-    const startR = 110;
-    const sx = cx + Math.cos(angle) * startR;
-    const sy = cy + Math.sin(angle) * startR;
-    // Control point pulled tangentially for a slight curve
-    const tangent = angle + Math.PI / 2;
-    const bulge = 24;
-    const mx = (sx + x) / 2 + Math.cos(tangent) * bulge;
-    const my = (sy + y) / 2 + Math.sin(tangent) * bulge;
-    return `M ${sx} ${sy} Q ${mx} ${my} ${x} ${y}`;
-  };
-
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      <defs>
-        <radialGradient id="core-halo" cx="50%" cy="50%">
-          <stop offset="0%" stopColor="#7DD3FC" stopOpacity="0.45" />
-          <stop offset="60%" stopColor="#5BA8D9" stopOpacity="0.08" />
-          <stop offset="100%" stopColor="#7DD3FC" stopOpacity="0" />
-        </radialGradient>
-        <radialGradient id="core-fill" cx="50%" cy="40%">
-          <stop offset="0%" stopColor="#1a2838" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#0c1018" stopOpacity="1" />
-        </radialGradient>
-        <pattern id="scan-lines" width="2" height="3" patternUnits="userSpaceOnUse">
-          <rect width="2" height="3" fill="none" />
-          <line x1="0" y1="0" x2="2" y2="0" stroke="#7DD3FC" strokeOpacity="0.04" />
-        </pattern>
-      </defs>
-
-      {/* Outer halo */}
-      <circle cx={cx} cy={cy} r={radius * 0.95} fill="url(#core-halo)">
-        {coreActive && (
-          <animate
-            attributeName="r"
-            values={`${radius * 0.9};${radius * 1.0};${radius * 0.9}`}
-            dur="3.2s"
-            repeatCount="indefinite"
-          />
-        )}
-      </circle>
-
-      {/* Subtle scan-line wash */}
-      <rect
-        x={cx - radius * 1.2}
-        y={cy - radius * 1.2}
-        width={radius * 2.4}
-        height={radius * 2.4}
-        fill="url(#scan-lines)"
-        opacity="0.6"
-      />
-
-      {/* Arm spokes (curved bezier) */}
-      {placed.map(({ agent, x, y, angle }) => {
-        const a = activity[agent.name];
-        const isActive = a?.state === 'running';
-        return (
-          <path
-            key={`arm-${agent.name}`}
-            d={armPath(x, y, angle)}
-            fill="none"
-            stroke={isActive ? '#7DD3FC' : '#1a2130'}
-            strokeWidth={isActive ? 2 : 1.4}
-            strokeLinecap="round"
-          >
-            {isActive && (
-              <animate
-                attributeName="stroke-opacity"
-                values="0.4;1;0.4"
-                dur="1.4s"
-                repeatCount="indefinite"
-              />
-            )}
-          </path>
-        );
-      })}
-
-      {/* Outer reactor ring */}
-      <ellipse
-        cx={cx}
-        cy={cy}
-        rx={130}
-        ry={108}
-        fill="url(#core-fill)"
-        stroke="#5BA8D9"
-        strokeOpacity="0.5"
-        strokeWidth={2}
-      />
-
-      {/* Inner cavity */}
-      <ellipse
-        cx={cx}
-        cy={cy - 18}
-        rx={95}
-        ry={70}
-        fill="#1a2838"
-        fillOpacity="0.7"
-        stroke="#7DD3FC"
-        strokeOpacity="0.4"
-        strokeWidth={1.5}
-      />
-
-      {/* Two intake vents (top of inner cavity) */}
-      <rect x={cx - 45} y={cy} width={32} height={3.5} rx={1.5} fill="#BAE6FD" />
-      <rect x={cx + 13} y={cy} width={32} height={3.5} rx={1.5} fill="#BAE6FD" />
-
-      {/* Core eye — the orchestrator */}
-      <circle cx={cx} cy={cy - 18} r={18} fill="#03060c" />
-      <circle
-        cx={cx}
-        cy={cy - 18}
-        r={14}
-        fill="none"
-        stroke={stateColor(orchestratorState)}
-        strokeWidth={1.5}
+    <div>
+      <p
+        className="text-[9px]"
+        style={{
+          color: '#5BA8D9',
+          fontFamily: 'ui-monospace, monospace',
+          letterSpacing: '0.3em',
+        }}
       >
-        {coreActive && (
-          <animate
-            attributeName="r"
-            values="13;17;13"
-            dur="2s"
-            repeatCount="indefinite"
-          />
-        )}
-      </circle>
-      <circle
-        cx={cx}
-        cy={cy - 18}
-        r={5}
-        fill={stateColor(orchestratorState)}
-        opacity={coreActive ? 1 : 0.6}
-      />
-
-      {/* Central label inside the reactor */}
-      <text
-        x={cx}
-        y={cy + 50}
-        textAnchor="middle"
-        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-        fontSize="13"
-        fill="#BAE6FD"
-        letterSpacing="0.5em"
+        {label}
+      </p>
+      <p
+        className={mono ? 'text-xs truncate' : 'text-lg'}
+        style={{
+          color: accent ? '#7DD3FC' : '#BAE6FD',
+          fontFamily: 'ui-monospace, monospace',
+          letterSpacing: mono ? '0.1em' : '0.05em',
+          textShadow: accent ? '0 0 8px rgba(125, 211, 252, 0.4)' : undefined,
+        }}
       >
-        OCTOPUS
-      </text>
-      <text
-        x={cx}
-        y={cy + 70}
-        textAnchor="middle"
-        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-        fontSize="9"
-        fill="#5BA8D9"
-        letterSpacing="0.3em"
-      >
-        REACTOR · CORE
-      </text>
-
-      {/* Sub-agent nodes — pod silhouette: outer ring + inner core */}
-      {placed.map(({ agent, x, y, angle }) => {
-        const a = activity[agent.name];
-        const color = stateColor(a?.state ?? 'idle');
-        const isRunning = a?.state === 'running';
-        // Place label outside the node along the angle so it doesn't overlap
-        const labelR = 22;
-        const lx = x + Math.cos(angle) * labelR;
-        const ly = y + Math.sin(angle) * labelR + 3;
-        const anchor =
-          Math.cos(angle) > 0.4 ? 'start' : Math.cos(angle) < -0.4 ? 'end' : 'middle';
-        return (
-          <g key={agent.name}>
-            {/* Halo for running */}
-            {isRunning && (
-              <circle cx={x} cy={y} r={18} fill={color} fillOpacity="0.15">
-                <animate
-                  attributeName="r"
-                  values="14;22;14"
-                  dur="1.6s"
-                  repeatCount="indefinite"
-                />
-                <animate
-                  attributeName="fill-opacity"
-                  values="0.05;0.25;0.05"
-                  dur="1.6s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-            )}
-            {/* Outer ring */}
-            <circle
-              cx={x}
-              cy={y}
-              r={9}
-              fill="#03060c"
-              stroke={color}
-              strokeWidth={1.4}
-              strokeOpacity={isRunning ? 1 : 0.7}
-            />
-            {/* Inner core */}
-            <circle cx={x} cy={y} r={3.5} fill={color} />
-            {/* Tick mark indicating state direction */}
-            <line
-              x1={x + Math.cos(angle) * 9}
-              y1={y + Math.sin(angle) * 9}
-              x2={x + Math.cos(angle) * 13}
-              y2={y + Math.sin(angle) * 13}
-              stroke={color}
-              strokeWidth={1.4}
-              strokeOpacity={isRunning ? 1 : 0.5}
-            />
-            {/* Label outside the node */}
-            <text
-              x={lx}
-              y={ly}
-              textAnchor={anchor}
-              fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-              fontSize="9"
-              fill={isRunning ? '#BAE6FD' : '#5BA8D9'}
-              letterSpacing="0.1em"
-            >
-              {agent.name.length > 16 ? agent.name.slice(0, 15) + '…' : agent.name}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+        {value}
+      </p>
+    </div>
   );
 }
 
-// ─── Live view ──────────────────────────────────────────────────────────
+function StageMeter({ stage }: { stage: { label: string; ordinal: number } }) {
+  return (
+    <div className="flex flex-col">
+      <p
+        className="text-[9px]"
+        style={{
+          color: '#5BA8D9',
+          fontFamily: 'ui-monospace, monospace',
+          letterSpacing: '0.3em',
+        }}
+      >
+        {stage.label}
+      </p>
+      <div className="flex gap-0.5 mt-1">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <span
+            key={i}
+            style={{
+              width: 8,
+              height: 8,
+              background: i <= stage.ordinal ? '#7DD3FC' : 'rgba(91, 168, 217, 0.2)',
+              border: '1px solid rgba(125, 211, 252, 0.3)',
+              imageRendering: 'pixelated',
+              boxShadow: i <= stage.ordinal ? '0 0 4px #7DD3FC' : undefined,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Mesh view (the agent barracks) ──────────────────────────────────
+
+function MeshView({
+  agents,
+  activity,
+  recommended,
+  tenant,
+  selected,
+  onSelect,
+}: {
+  agents: AgentInfo[];
+  activity: Record<string, AgentActivity>;
+  recommended: string[];
+  tenant: Tenant | null;
+  selected: string | null;
+  onSelect: (name: string | null) => void;
+}) {
+  const recSet = useMemo(() => new Set(recommended), [recommended]);
+  const byName = useMemo(() => {
+    const m: Record<string, AgentInfo> = {};
+    for (const a of agents) m[a.name] = a;
+    return m;
+  }, [agents]);
+
+  const selAgent = selected ? byName[selected] : null;
+  const selAct = selected ? activity[selected] : null;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+      {/* Departments */}
+      <div className="space-y-4">
+        {DEPARTMENTS.map((dept) => {
+          const present = dept.agents.filter((n) => byName[n]);
+          if (present.length === 0) return null;
+          return (
+            <div
+              key={dept.id}
+              className="rounded border p-3"
+              style={{
+                background: 'rgba(12, 16, 24, 0.5)',
+                borderColor: 'rgba(125, 211, 252, 0.15)',
+              }}
+            >
+              <p
+                className="text-[10px] mb-3"
+                style={{
+                  color: '#5BA8D9',
+                  fontFamily: 'ui-monospace, monospace',
+                  letterSpacing: '0.3em',
+                }}
+              >
+                {dept.label} · {present.length}
+              </p>
+              <div
+                className="grid gap-2"
+                style={{
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+                }}
+              >
+                {present.map((name) => {
+                  const a = byName[name]!;
+                  const act = activity[name];
+                  const isRec = !tenant || recSet.has(name);
+                  const isSelected = selected === name;
+                  return (
+                    <UnitCard
+                      key={name}
+                      agent={a}
+                      activity={act}
+                      recommended={isRec}
+                      selected={isSelected}
+                      onClick={() => onSelect(isSelected ? null : name)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Inspector */}
+      <aside
+        className="rounded border p-4 self-start"
+        style={{
+          background: 'rgba(12, 16, 24, 0.7)',
+          borderColor: 'rgba(125, 211, 252, 0.2)',
+        }}
+      >
+        <p
+          className="text-[10px] mb-3"
+          style={{
+            color: '#5BA8D9',
+            fontFamily: 'ui-monospace, monospace',
+            letterSpacing: '0.3em',
+          }}
+        >
+          UNIT INSPECTOR
+        </p>
+        {!selAgent ? (
+          <p
+            className="text-xs"
+            style={{
+              color: '#5BA8D9',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.1em',
+            }}
+          >
+            ▸ SELECT A UNIT
+          </p>
+        ) : (
+          <UnitInspector agent={selAgent} activity={selAct} />
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function UnitCard({
+  agent,
+  activity,
+  recommended,
+  selected,
+  onClick,
+}: {
+  agent: AgentInfo;
+  activity: AgentActivity | undefined;
+  recommended: boolean;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const state = activity?.state ?? 'idle';
+  const runs = activity?.runs ?? 0;
+  const dim = !recommended;
+  const isRunning = state === 'running';
+  const accentColor =
+    state === 'running'
+      ? '#7DD3FC'
+      : state === 'done'
+        ? '#86EFAC'
+        : state === 'error'
+          ? '#F87171'
+          : '#5BA8D9';
+
+  return (
+    <button
+      onClick={onClick}
+      className="rounded text-left transition-all relative"
+      style={{
+        background: selected
+          ? 'rgba(125, 211, 252, 0.12)'
+          : 'rgba(3, 6, 12, 0.6)',
+        border: selected
+          ? `2px solid ${accentColor}`
+          : `1px solid ${isRunning ? accentColor + '88' : 'rgba(125, 211, 252, 0.15)'}`,
+        opacity: dim ? 0.45 : 1,
+        padding: '10px',
+        cursor: 'pointer',
+        boxShadow: isRunning ? `0 0 12px ${accentColor}44` : undefined,
+        imageRendering: 'pixelated',
+      }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            background: 'rgba(3, 6, 12, 0.9)',
+            border: `1px solid ${accentColor}66`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <PixelSigil name={agent.name} size={28} state={state} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-[10px] truncate"
+            style={{
+              color: isRunning ? '#BAE6FD' : '#94A3B8',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.05em',
+            }}
+            title={agent.name}
+          >
+            {agent.name}
+          </p>
+          <p
+            className="text-[9px]"
+            style={{
+              color: accentColor,
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.2em',
+            }}
+          >
+            {state.toUpperCase()}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <p
+          className="text-[9px]"
+          style={{
+            color: '#64748B',
+            fontFamily: 'ui-monospace, monospace',
+          }}
+        >
+          ×{runs}
+        </p>
+        {agent.agentic && (
+          <span
+            className="text-[8px] px-1"
+            style={{
+              color: '#7DD3FC',
+              border: '1px solid rgba(125, 211, 252, 0.3)',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.15em',
+            }}
+          >
+            AGENTIC
+          </span>
+        )}
+      </div>
+      {isRunning && (
+        <span
+          className="absolute top-1 right-1 inline-block h-1.5 w-1.5 rounded-full"
+          style={{
+            background: accentColor,
+            boxShadow: `0 0 6px ${accentColor}`,
+            animation: 'pulse 1.4s infinite',
+          }}
+        />
+      )}
+    </button>
+  );
+}
+
+function UnitInspector({
+  agent,
+  activity,
+}: {
+  agent: AgentInfo;
+  activity: AgentActivity | null | undefined;
+}) {
+  const labelStyle = {
+    color: '#5BA8D9',
+    fontFamily: 'ui-monospace, monospace',
+    letterSpacing: '0.2em',
+  } as const;
+  const valueStyle = {
+    color: '#BAE6FD',
+    fontFamily: 'ui-monospace, monospace',
+    letterSpacing: '0.05em',
+  } as const;
+  return (
+    <div className="space-y-3 text-xs">
+      <div className="flex items-center gap-3">
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            background: 'rgba(3, 6, 12, 0.9)',
+            border: '1px solid rgba(125, 211, 252, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <PixelSigil name={agent.name} size={56} state={activity?.state ?? 'idle'} />
+        </div>
+        <div>
+          <p style={labelStyle}>NAME</p>
+          <p style={valueStyle}>{agent.name}</p>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[9px]" style={labelStyle}>
+          PROVIDER · MODEL
+        </p>
+        <p className="text-[10px]" style={valueStyle}>
+          {agent.provider} · {agent.model}
+        </p>
+      </div>
+
+      {agent.system_prompt_summary && (
+        <div>
+          <p className="text-[9px]" style={labelStyle}>
+            ROLE
+          </p>
+          <p className="text-[11px] leading-relaxed" style={{ color: '#CBD5E1' }}>
+            {agent.system_prompt_summary}
+          </p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <p className="text-[9px]" style={labelStyle}>
+            DEPTH
+          </p>
+          <p style={valueStyle}>{agent.max_depth}</p>
+        </div>
+        <div>
+          <p className="text-[9px]" style={labelStyle}>
+            ITER
+          </p>
+          <p style={valueStyle}>{agent.max_iterations}</p>
+        </div>
+        <div>
+          <p className="text-[9px]" style={labelStyle}>
+            TOOLS
+          </p>
+          <p style={valueStyle}>{agent.allowed_tools.length}</p>
+        </div>
+        <div>
+          <p className="text-[9px]" style={labelStyle}>
+            RUNS
+          </p>
+          <p style={valueStyle}>{activity?.runs ?? 0}</p>
+        </div>
+      </div>
+
+      {agent.memory_namespace && (
+        <div>
+          <p className="text-[9px]" style={labelStyle}>
+            MEMORY · NS
+          </p>
+          <p className="text-[10px]" style={valueStyle}>
+            {agent.memory_namespace}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Live + Timeline (carry over from prior version, palette-matched)
 
 function LiveView({
   events,
   activity,
-  agents,
 }: {
   events: SSEEvent[];
   activity: Record<string, AgentActivity>;
-  agents: AgentInfo[];
 }) {
   const recent = events.slice(-50).reverse();
   const running = Object.values(activity).filter((a) => a.state === 'running');
   const totalRuns = Object.values(activity).reduce((s, a) => s + a.runs, 0);
 
-  const panelStyle = {
-    background: 'rgba(12, 16, 24, 0.7)',
-    borderColor: 'rgba(125, 211, 252, 0.18)',
-  } as const;
-  const panelHeaderStyle = {
-    borderColor: 'rgba(125, 211, 252, 0.12)',
-    color: '#5BA8D9',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    letterSpacing: '0.25em',
-  } as const;
-
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
-      <div className="rounded border overflow-hidden" style={panelStyle}>
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+      <div
+        className="rounded border overflow-hidden"
+        style={{
+          background: 'rgba(12, 16, 24, 0.7)',
+          borderColor: 'rgba(125, 211, 252, 0.2)',
+        }}
+      >
         <div
           className="px-4 py-3 border-b text-[10px]"
-          style={panelHeaderStyle}
+          style={{
+            borderColor: 'rgba(125, 211, 252, 0.12)',
+            color: '#5BA8D9',
+            fontFamily: 'ui-monospace, monospace',
+            letterSpacing: '0.25em',
+          }}
         >
           EVENT STREAM · {events.length} BUFFERED · {totalRuns} RUNS
         </div>
         <div
           className="overflow-y-auto text-xs"
           style={{
-            maxHeight: 'calc(100vh - 340px)',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            maxHeight: 'calc(100vh - 360px)',
+            fontFamily: 'ui-monospace, monospace',
           }}
         >
           {recent.length === 0 ? (
-            <div className="p-8 text-center" style={{ color: '#5BA8D9', letterSpacing: '0.15em' }}>
-              NO EVENTS YET — DELEGATE FROM THE CHAT.
+            <div
+              className="p-8 text-center"
+              style={{ color: '#5BA8D9', letterSpacing: '0.15em' }}
+            >
+              NO EVENTS YET — DELEGATE FROM /AGENT
             </div>
           ) : (
             <ul>
               {recent.map((e, i) => {
                 const isError = e.type === 'error' || e.success === false;
                 const isDone =
-                  e.type === 'agent_end' || (e.type === 'tool_call' && e.success !== false);
+                  e.type === 'agent_end' ||
+                  (e.type === 'tool_call' && e.success !== false);
                 const Icon = isError ? AlertCircle : isDone ? CheckCircle2 : Activity;
                 const color = isError ? '#F87171' : isDone ? '#86EFAC' : '#7DD3FC';
                 const target =
@@ -762,11 +1161,24 @@ function LiveView({
         </div>
       </div>
 
-      <aside className="rounded border p-5 self-start space-y-5" style={panelStyle}>
+      <aside
+        className="rounded border p-4 self-start space-y-4"
+        style={{
+          background: 'rgba(12, 16, 24, 0.7)',
+          borderColor: 'rgba(125, 211, 252, 0.2)',
+        }}
+      >
         <div>
-          <h2 className="text-[10px] mb-3" style={panelHeaderStyle}>
+          <p
+            className="text-[10px] mb-3"
+            style={{
+              color: '#5BA8D9',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.25em',
+            }}
+          >
             NOW RUNNING · {running.length}
-          </h2>
+          </p>
           {running.length === 0 ? (
             <p
               className="text-xs"
@@ -776,7 +1188,7 @@ function LiveView({
                 letterSpacing: '0.15em',
               }}
             >
-              ALL AGENTS IDLE
+              ALL UNITS IDLE
             </p>
           ) : (
             <ul className="space-y-2">
@@ -790,78 +1202,25 @@ function LiveView({
                     letterSpacing: '0.1em',
                   }}
                 >
-                  <span
-                    className="inline-block h-1.5 w-1.5 rounded-full"
-                    style={{
-                      background: '#7DD3FC',
-                      boxShadow: '0 0 8px #7DD3FC',
-                      animation: 'pulse 1.6s ease-in-out infinite',
-                    }}
-                  />
+                  <PixelSigil name={a.name} size={16} state="running" />
                   {a.name}
                 </li>
               ))}
             </ul>
           )}
         </div>
-
-        <div>
-          <h2 className="text-[10px] mb-3" style={panelHeaderStyle}>
-            BENCH LEADERBOARD
-          </h2>
-          <ul className="space-y-1">
-            {agents
-              .map((a) => activity[a.name])
-              .filter((a): a is AgentActivity => Boolean(a))
-              .sort((a, b) => b.runs - a.runs)
-              .slice(0, 12)
-              .map((a) => {
-                const max =
-                  Math.max(
-                    1,
-                    ...agents.map((x) => activity[x.name]?.runs ?? 0),
-                  );
-                const pct = (a.runs / max) * 100;
-                return (
-                  <li
-                    key={a.name}
-                    className="flex items-center gap-2 text-xs relative"
-                    style={{
-                      fontFamily: 'ui-monospace, monospace',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
-                    <Bot className="h-3 w-3 shrink-0" style={{ color: '#7DD3FC' }} />
-                    <span className="truncate flex-1 z-10" style={{ color: '#BAE6FD' }}>
-                      {a.name}
-                    </span>
-                    <span style={{ color: '#5BA8D9' }}>{a.runs}</span>
-                    {a.runs > 0 && (
-                      <span
-                        className="absolute inset-y-0 left-0 rounded"
-                        style={{
-                          width: `${pct}%`,
-                          background:
-                            'linear-gradient(90deg, rgba(125, 211, 252, 0.12), transparent)',
-                          pointerEvents: 'none',
-                        }}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-          </ul>
-        </div>
       </aside>
     </div>
   );
 }
 
-// ─── Timeline (Gantt-ish) ───────────────────────────────────────────────
-
-function TimelineView({ events, agents }: { events: SSEEvent[]; agents: AgentInfo[] }) {
-  // Build runs by pairing _start / _end events per agent name (best-effort).
-  // Prefer target_agent (delegate dispatch) over generic agent/model fallback.
+function TimelineView({
+  events,
+  agents,
+}: {
+  events: SSEEvent[];
+  agents: AgentInfo[];
+}) {
   const runs = useMemo(() => {
     const out: Array<{
       agent: string;
@@ -923,28 +1282,25 @@ function TimelineView({ events, agents }: { events: SSEEvent[]; agents: AgentInf
       className="rounded border overflow-hidden"
       style={{
         background: 'rgba(12, 16, 24, 0.7)',
-        borderColor: 'rgba(125, 211, 252, 0.18)',
+        borderColor: 'rgba(125, 211, 252, 0.2)',
       }}
     >
       <div
-        className="px-4 py-3 border-b text-[10px] flex items-center justify-between"
+        className="px-4 py-3 border-b text-[10px]"
         style={{
           borderColor: 'rgba(125, 211, 252, 0.12)',
           color: '#5BA8D9',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.25em',
         }}
       >
-        <span>
-          TIMELINE · LAST {Math.round(span / 1000)}S · {runs.length} RUNS
-        </span>
-        <span>{runs.length === 0 && 'SESSION-ONLY · LOST ON RELOAD'}</span>
+        TIMELINE · LAST {Math.round(span / 1000)}S · {runs.length} RUNS
       </div>
       <div
         className="overflow-y-auto text-xs"
         style={{
-          maxHeight: 'calc(100vh - 340px)',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          maxHeight: 'calc(100vh - 360px)',
+          fontFamily: 'ui-monospace, monospace',
         }}
       >
         <table className="w-full">
@@ -963,20 +1319,25 @@ function TimelineView({ events, agents }: { events: SSEEvent[]; agents: AgentInf
                   }}
                 >
                   <td
-                    className="px-4 py-2 align-middle whitespace-nowrap"
-                    style={{
-                      color: isOrch ? '#7DD3FC' : '#BAE6FD',
-                      width: '200px',
-                      letterSpacing: '0.12em',
-                      fontWeight: isOrch ? 600 : 400,
-                    }}
+                    className="px-3 py-2 align-middle whitespace-nowrap"
+                    style={{ width: '210px' }}
                   >
-                    {isOrch && '◆ '}
-                    {lane}
+                    <div className="flex items-center gap-2">
+                      <PixelSigil name={lane} size={14} state="idle" />
+                      <span
+                        style={{
+                          color: isOrch ? '#7DD3FC' : '#BAE6FD',
+                          letterSpacing: '0.1em',
+                          fontWeight: isOrch ? 600 : 400,
+                        }}
+                      >
+                        {lane}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-2 py-2 relative" style={{ height: '28px' }}>
                     <div
-                      className="absolute inset-y-2 left-2 right-2 rounded"
+                      className="absolute inset-y-2 left-2 right-2 rounded-sm"
                       style={{
                         background:
                           'repeating-linear-gradient(90deg, transparent 0 8px, rgba(125, 211, 252, 0.06) 8px 9px)',
@@ -988,7 +1349,7 @@ function TimelineView({ events, agents }: { events: SSEEvent[]; agents: AgentInf
                       return (
                         <div
                           key={i}
-                          className="absolute rounded-sm"
+                          className="absolute"
                           title={`${r.type} · ${r.end - r.start}ms`}
                           style={{
                             left: `calc(${Math.max(left, 0)}% + 8px)`,
@@ -1004,6 +1365,7 @@ function TimelineView({ events, agents }: { events: SSEEvent[]; agents: AgentInf
                             boxShadow: r.ok
                               ? '0 0 8px rgba(125, 211, 252, 0.4)'
                               : '0 0 8px rgba(248, 113, 113, 0.4)',
+                            imageRendering: 'pixelated',
                           }}
                         />
                       );
@@ -1018,3 +1380,290 @@ function TimelineView({ events, agents }: { events: SSEEvent[]; agents: AgentInf
     </div>
   );
 }
+
+// ─── Empty state + create modal ──────────────────────────────────────
+
+function NoTenantBanner({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div
+      className="rounded border p-6 text-center"
+      style={{
+        background:
+          'radial-gradient(ellipse at center, rgba(125, 211, 252, 0.05) 0%, rgba(3, 6, 12, 0.9) 70%)',
+        borderColor: 'rgba(125, 211, 252, 0.2)',
+      }}
+    >
+      <p
+        className="text-[10px] mb-2"
+        style={{
+          color: '#5BA8D9',
+          fontFamily: 'ui-monospace, monospace',
+          letterSpacing: '0.4em',
+        }}
+      >
+        NO COMPANY SELECTED
+      </p>
+      <p
+        className="text-sm mb-4"
+        style={{
+          color: '#BAE6FD',
+          fontFamily: 'ui-monospace, monospace',
+          letterSpacing: '0.1em',
+        }}
+      >
+        Create your first company to deploy the bench against a real venture.
+      </p>
+      <button
+        onClick={onCreate}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded border text-xs"
+        style={{
+          background: 'rgba(125, 211, 252, 0.1)',
+          borderColor: 'rgba(125, 211, 252, 0.5)',
+          color: '#7DD3FC',
+          fontFamily: 'ui-monospace, monospace',
+          letterSpacing: '0.2em',
+          boxShadow: '0 0 16px rgba(125, 211, 252, 0.2)',
+        }}
+      >
+        <Plus className="h-3.5 w-3.5" /> NEW COMPANY
+      </button>
+    </div>
+  );
+}
+
+const CATEGORY_DESCRIPTIONS: Record<TenantCategory, string> = {
+  saas: 'Software-as-a-Service · seats / requests / workflows',
+  marketplace: 'Two-sided marketplace · GMV, take rate',
+  fintech: 'Financial services · regulated, risk-heavy',
+  ecommerce: 'Direct-to-consumer / retail',
+  agency: 'Services / consulting · time-as-product',
+  hardware: 'Physical product · supply chain, certification',
+  media: 'Content / publishing / community',
+  ai: 'AI-native product · models, GPU costs',
+  other: 'Custom / undecided',
+};
+
+function TenantCreateModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState<TenantCategory>('saas');
+  const [mission, setMission] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError('Name is required');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createTenant({ name: name.trim(), category, mission: mission.trim() });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(3, 6, 12, 0.85)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <form
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="rounded border p-6 w-full max-w-md space-y-4"
+        style={{
+          background: 'rgba(12, 16, 24, 0.95)',
+          borderColor: 'rgba(125, 211, 252, 0.4)',
+          boxShadow: '0 0 32px rgba(125, 211, 252, 0.15)',
+        }}
+      >
+        <p
+          className="text-[10px]"
+          style={{
+            color: '#5BA8D9',
+            fontFamily: 'ui-monospace, monospace',
+            letterSpacing: '0.4em',
+          }}
+        >
+          NEW COMPANY · DEPLOY
+        </p>
+        <h2
+          className="text-xl"
+          style={{
+            color: '#BAE6FD',
+            fontFamily: 'ui-monospace, monospace',
+            letterSpacing: '0.18em',
+          }}
+        >
+          INITIATE TENANT
+        </h2>
+
+        <div>
+          <label
+            className="text-[10px] block mb-1"
+            style={{
+              color: '#5BA8D9',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.25em',
+            }}
+          >
+            NAME
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Acme SaaS Co"
+            autoFocus
+            className="w-full px-3 py-2 rounded text-sm"
+            style={{
+              background: 'rgba(3, 6, 12, 0.7)',
+              border: '1px solid rgba(125, 211, 252, 0.3)',
+              color: '#BAE6FD',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.05em',
+            }}
+          />
+        </div>
+
+        <div>
+          <label
+            className="text-[10px] block mb-1"
+            style={{
+              color: '#5BA8D9',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.25em',
+            }}
+          >
+            CATEGORY
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {(Object.keys(CATEGORY_META) as TenantCategory[]).map((c) => {
+              const meta = CATEGORY_META[c];
+              const active = category === c;
+              return (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => setCategory(c)}
+                  className="px-2 py-2 rounded text-[10px]"
+                  style={{
+                    background: active ? meta.tint + '22' : 'rgba(3, 6, 12, 0.5)',
+                    border: active
+                      ? `1px solid ${meta.tint}`
+                      : '1px solid rgba(125, 211, 252, 0.15)',
+                    color: active ? meta.tint : '#5BA8D9',
+                    fontFamily: 'ui-monospace, monospace',
+                    letterSpacing: '0.2em',
+                    boxShadow: active ? `0 0 8px ${meta.tint}33` : undefined,
+                  }}
+                >
+                  {meta.label}
+                </button>
+              );
+            })}
+          </div>
+          <p
+            className="text-[10px] mt-1.5"
+            style={{
+              color: '#94A3B8',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.05em',
+            }}
+          >
+            {CATEGORY_DESCRIPTIONS[category]}
+          </p>
+        </div>
+
+        <div>
+          <label
+            className="text-[10px] block mb-1"
+            style={{
+              color: '#5BA8D9',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.25em',
+            }}
+          >
+            MISSION (optional)
+          </label>
+          <input
+            type="text"
+            value={mission}
+            onChange={(e) => setMission(e.target.value)}
+            placeholder="One-line positioning..."
+            className="w-full px-3 py-2 rounded text-sm"
+            style={{
+              background: 'rgba(3, 6, 12, 0.7)',
+              border: '1px solid rgba(125, 211, 252, 0.3)',
+              color: '#BAE6FD',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.05em',
+            }}
+          />
+        </div>
+
+        {error && (
+          <p
+            className="text-[11px]"
+            style={{
+              color: '#F87171',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.05em',
+            }}
+          >
+            ERR · {error}
+          </p>
+        )}
+
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded text-[10px]"
+            style={{
+              background: 'transparent',
+              border: '1px solid rgba(125, 211, 252, 0.2)',
+              color: '#5BA8D9',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.25em',
+            }}
+          >
+            CANCEL
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || !name.trim()}
+            className="px-4 py-2 rounded text-[10px]"
+            style={{
+              background: 'rgba(125, 211, 252, 0.15)',
+              border: '1px solid #7DD3FC',
+              color: '#BAE6FD',
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.25em',
+              boxShadow: '0 0 12px rgba(125, 211, 252, 0.3)',
+              opacity: submitting || !name.trim() ? 0.5 : 1,
+            }}
+          >
+            {submitting ? 'DEPLOYING...' : 'DEPLOY'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// Re-export delete helper for the future tenant management UI.
+export { deleteTenant };
