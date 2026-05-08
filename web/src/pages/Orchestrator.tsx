@@ -464,10 +464,8 @@ function CommandHud({
     <div
       className="rounded border p-4"
       style={{
-        background:
-          'linear-gradient(180deg, rgba(12, 16, 24, 0.95), rgba(3, 6, 12, 1))',
+        background: 'rgba(12, 16, 24, 0.95)',
         borderColor: 'rgba(125, 211, 252, 0.2)',
-        boxShadow: 'inset 0 0 24px rgba(125, 211, 252, 0.04)',
       }}
     >
       <div className="flex items-end justify-between gap-4 flex-wrap">
@@ -480,7 +478,6 @@ function CommandHud({
               height: 56,
               background: 'rgba(3, 6, 12, 1)',
               border: '2px solid rgba(125, 211, 252, 0.4)',
-              boxShadow: '0 0 16px rgba(125, 211, 252, 0.2)',
             }}
           >
             <PixelSigil name={ORCHESTRATOR_NAME} size={40} state="idle" />
@@ -517,7 +514,6 @@ function CommandHud({
             style={{
               background: 'rgba(3, 6, 12, 0.7)',
               borderColor: cat.tint + '66',
-              boxShadow: `0 0 12px ${cat.tint}22`,
             }}
           >
             <Building2 className="h-5 w-5" style={{ color: cat.tint }} />
@@ -579,7 +575,6 @@ function CommandHud({
               className="inline-block h-1.5 w-1.5 rounded-full"
               style={{
                 background: connected ? '#7DD3FC' : '#5BA8D9',
-                boxShadow: connected ? '0 0 8px #7DD3FC' : undefined,
                 animation: connected ? 'pulse 2s infinite' : undefined,
               }}
             />
@@ -619,9 +614,6 @@ function CommandHud({
                       : '1px solid transparent',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.2em',
-                    boxShadow: active
-                      ? '0 0 12px rgba(125, 211, 252, 0.15)'
-                      : undefined,
                   }}
                 >
                   <Icon className="h-3 w-3" /> {label}
@@ -686,7 +678,6 @@ function Stat({
           color: accent ? '#7DD3FC' : '#BAE6FD',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: mono ? '0.1em' : '0.05em',
-          textShadow: accent ? '0 0 8px rgba(125, 211, 252, 0.4)' : undefined,
         }}
       >
         {value}
@@ -718,7 +709,6 @@ function StageMeter({ stage }: { stage: { label: string; ordinal: number } }) {
               background: i <= stage.ordinal ? '#7DD3FC' : 'rgba(91, 168, 217, 0.2)',
               border: '1px solid rgba(125, 211, 252, 0.3)',
               imageRendering: 'pixelated',
-              boxShadow: i <= stage.ordinal ? '0 0 4px #7DD3FC' : undefined,
             }}
           />
         ))}
@@ -885,7 +875,6 @@ function UnitCard({
         opacity: dim ? 0.45 : 1,
         padding: '10px',
         cursor: 'pointer',
-        boxShadow: isRunning ? `0 0 12px ${accentColor}44` : undefined,
         imageRendering: 'pixelated',
       }}
     >
@@ -956,7 +945,6 @@ function UnitCard({
           className="absolute top-1 right-1 inline-block h-1.5 w-1.5 rounded-full"
           style={{
             background: accentColor,
-            boxShadow: `0 0 6px ${accentColor}`,
             animation: 'pulse 1.4s infinite',
           }}
         />
@@ -1362,9 +1350,6 @@ function TimelineView({
                             border: r.ok
                               ? '1px solid #7DD3FC'
                               : '1px solid #F87171',
-                            boxShadow: r.ok
-                              ? '0 0 8px rgba(125, 211, 252, 0.4)'
-                              : '0 0 8px rgba(248, 113, 113, 0.4)',
                             imageRendering: 'pixelated',
                           }}
                         />
@@ -1422,7 +1407,6 @@ function NoTenantBanner({ onCreate }: { onCreate: () => void }) {
           color: '#7DD3FC',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.2em',
-          boxShadow: '0 0 16px rgba(125, 211, 252, 0.2)',
         }}
       >
         <Plus className="h-3.5 w-3.5" /> NEW COMPANY
@@ -1477,7 +1461,7 @@ function TenantCreateModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(3, 6, 12, 0.85)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(3, 6, 12, 0.92)' }}
       onClick={onClose}
     >
       <form
@@ -1487,7 +1471,6 @@ function TenantCreateModal({
         style={{
           background: 'rgba(12, 16, 24, 0.95)',
           borderColor: 'rgba(125, 211, 252, 0.4)',
-          boxShadow: '0 0 32px rgba(125, 211, 252, 0.15)',
         }}
       >
         <p
@@ -1568,7 +1551,6 @@ function TenantCreateModal({
                     color: active ? meta.tint : '#5BA8D9',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.2em',
-                    boxShadow: active ? `0 0 8px ${meta.tint}33` : undefined,
                   }}
                 >
                   {meta.label}
@@ -1653,7 +1635,6 @@ function TenantCreateModal({
               color: '#BAE6FD',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
-              boxShadow: '0 0 12px rgba(125, 211, 252, 0.3)',
               opacity: submitting || !name.trim() ? 0.5 : 1,
             }}
           >

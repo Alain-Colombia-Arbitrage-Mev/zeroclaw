@@ -158,10 +158,6 @@ export function PixelSigil({ name, size = 32, state = 'idle' }: PixelSigilProps)
         imageRendering: 'pixelated',
         // Hard edges, no anti-aliasing
         shapeRendering: 'crispEdges',
-        filter:
-          state === 'running'
-            ? `drop-shadow(0 0 ${size / 6}px ${primary})`
-            : undefined,
       }}
     >
       {state === 'running' && (
