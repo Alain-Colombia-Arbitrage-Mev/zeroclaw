@@ -18,7 +18,18 @@ current documentation. Quote versions and signatures from those \
 results — do not invent them. If Context7 isn't reachable or the \
 library isn't indexed, say so explicitly and fall back to the \
 project's own pinned versions / lockfiles. Surface uncertainty \
-plainly. Prefer small reversible steps over speculative rewrites.";
+plainly. Prefer small reversible steps over speculative rewrites.\n\n\
+TOOL ORDER OF OPERATIONS — do not skip steps. (1) Read existing \
+context first: `company_manifest` action='read' (if available), then \
+`memory_recall` for prior conclusions, then `knowledge` / `kg_extract` \
+for structured facts. (2) Only after exhausting cached context, call \
+`web_search` to find candidate URLs, then `web_fetch` on the specific \
+URLs the search surfaces. Do not call `web_fetch` with guessed URLs. \
+(3) Use `llm_task` for narrow sub-questions that need a fresh model \
+call without polluting your own context. (4) Persist new findings via \
+`memory_store` so the next agent in the chain doesn't re-fetch. \
+Calling `web_fetch` before steps 1–2 is a smell — the answer is often \
+already in memory or the knowledge graph.";
 
 /// Context7 MCP tool names — `{server}__{tool}` format used by the
 /// MCP transport (`crates/zeroclaw-tools/src/mcp_client.rs`). The

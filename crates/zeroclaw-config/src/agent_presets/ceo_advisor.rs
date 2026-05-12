@@ -25,11 +25,11 @@ pub fn ceo_advisor_preset(provider: &str, model: &str) -> DelegateAgentConfig {
 
 fn ceo_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "web_fetch",
+        "memory_recall",
         "knowledge",
         "graphify",
         "llm_task",
-        "memory_recall",
+        "web_fetch",
         "memory_store",
         "canvas",
         "image_gen",

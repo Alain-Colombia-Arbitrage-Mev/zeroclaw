@@ -25,8 +25,8 @@ pub fn cfo_advisor_preset(provider: &str, model: &str) -> DelegateAgentConfig {
 
 fn cfo_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "web_fetch", "knowledge", "graphify", "llm_task",
-        "memory_recall", "memory_store", "canvas",
+        "memory_recall", "knowledge", "graphify", "llm_task",
+        "web_fetch", "memory_store", "canvas",
     ]
     .iter().map(|s| (*s).to_string()).collect();
     tools.extend(context7_tools().iter().map(|s| (*s).to_string()));

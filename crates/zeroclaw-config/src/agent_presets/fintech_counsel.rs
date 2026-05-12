@@ -27,8 +27,8 @@ pub fn fintech_counsel_preset(provider: &str, model: &str) -> DelegateAgentConfi
 
 fn fintech_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "web_fetch", "knowledge", "graphify", "llm_task",
-        "memory_recall", "memory_store", "canvas",
+        "memory_recall", "knowledge", "graphify", "llm_task",
+        "web_fetch", "memory_store", "canvas",
         "file_read", "content_search",
     ]
     .iter().map(|s| (*s).to_string()).collect();
