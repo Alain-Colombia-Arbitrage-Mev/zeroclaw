@@ -63,9 +63,33 @@ services:
     networks:
       - dev-net
 
+  # ── FalkorDB (Redis-protocol property graph) ──
+  # Backs `knowledge.backend = "falkordb"`. The daemon connects via
+  # redis://localhost:6379 by default (configurable in [knowledge.falkordb]).
+  # Bind to localhost so the dev daemon (running on the host, not in compose)
+  # can reach it without exposing it publicly.
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: zeroclaw-falkordb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - falkordb-data:/var/lib/falkordb/data
+    networks:
+      - dev-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 networks:
   dev-net:
     driver: bridge
+
+volumes:
+  falkordb-data:
 
 secrets:
   zeroclaw_env:

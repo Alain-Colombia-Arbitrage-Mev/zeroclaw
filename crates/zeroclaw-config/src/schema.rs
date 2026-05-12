@@ -2132,6 +2132,15 @@ fn get_default_pricing() -> std::collections::HashMap<String, ModelPricing> {
         },
     );
 
+    // DeepSeek models
+    prices.insert(
+        "deepseek/deepseek-v4-pro".into(),
+        ModelPricing {
+            input: 0.435,
+            output: 0.87,
+        },
+    );
+
     prices
 }
 

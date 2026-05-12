@@ -361,10 +361,7 @@ const ROLE_PREFERRED_CATEGORIES: &[(&str, &[&str])] = &[
             "regulatory_blockchain",
         ],
     ),
-    (
-        "esg_energy_counsel",
-        &["regulatory_energy"],
-    ),
+    ("esg_energy_counsel", &["regulatory_energy"]),
     (
         "legal_compliance",
         &[
@@ -417,16 +414,25 @@ async fn build_context(
     min_relevance_score: f64,
     session_id: Option<&str>,
 ) -> String {
-    build_context_for_role(mem, user_msg, min_relevance_score, session_id, None).await
+    build_context_for_role(mem, user_msg, min_relevance_score, session_id, None, None)
+        .await
+        .0
 }
 
+/// Build a memory-context preamble for the agent loop.
+///
+/// Returns `(preamble, injected_keys)` so callers (notably the delegate tool)
+/// can dedupe corpus chunks across consecutive sub-agent runs in the same
+/// turn: pass already-seen keys in `excluded_keys` and persist the returned
+/// `injected_keys` for the next call.
 pub(crate) async fn build_context_for_role(
     mem: &dyn Memory,
     user_msg: &str,
     min_relevance_score: f64,
     session_id: Option<&str>,
     role: Option<&str>,
-) -> String {
+    excluded_keys: Option<&std::collections::HashSet<String>>,
+) -> (String, Vec<String>) {
     let mut context = String::new();
 
     // Over-fetch when a role is set so the boost has room to reorder.
@@ -468,6 +474,7 @@ pub(crate) async fn build_context_for_role(
             })
             .collect();
 
+        let mut injected_keys: Vec<String> = Vec::new();
         if !relevant.is_empty() {
             context.push_str("[Memory context]\n");
             for entry in &relevant {
@@ -489,7 +496,16 @@ pub(crate) async fn build_context_for_role(
                 if entry.content.contains("<tool_result") {
                     continue;
                 }
+                // Dedup across consecutive delegations in the same turn: if
+                // the caller (delegate) has already injected this entry into a
+                // previous sub-agent's preamble, skip it here.
+                if let Some(excluded) = excluded_keys
+                    && excluded.contains(&entry.key)
+                {
+                    continue;
+                }
                 let _ = writeln!(context, "- {}: {}", entry.key, entry.content);
+                injected_keys.push(entry.key.clone());
             }
             if context == "[Memory context]\n" {
                 context.clear();
@@ -497,9 +513,10 @@ pub(crate) async fn build_context_for_role(
                 context.push_str("[/Memory context]\n\n");
             }
         }
+        return (context, injected_keys);
     }
 
-    context
+    (context, Vec::new())
 }
 
 /// Build hardware datasheet context from RAG when peripherals are enabled.
@@ -1184,19 +1201,63 @@ pub async fn run_tool_call_loop(
             hooks.fire_llm_input(history, model).await;
         }
 
-        // Budget enforcement — block if limit exceeded (no-op when not scoped)
-        if let Some(BudgetCheck::Exceeded {
-            current_usd,
-            limit_usd,
-            period,
-        }) = check_tool_loop_budget()
-        {
-            return Err(anyhow::anyhow!(
-                "Budget exceeded: ${:.4} of ${:.2} {:?} limit. Cannot make further API calls until the budget resets.",
-                current_usd,
-                limit_usd,
-                period
-            ));
+        // Pre-flight budget check — estimate cost of the upcoming call and
+        // honor cost.enforcement.mode (warn / block / route_down). No-op when
+        // no cost tracking context is scoped.
+        if let Some(check) = crate::agent::cost::preflight_tool_loop_budget(
+            active_provider_name,
+            active_model,
+            &prepared_messages.messages,
+        ) {
+            let mode = crate::agent::cost::current_enforcement_mode()
+                .unwrap_or_else(|| "warn".to_string());
+            match check {
+                BudgetCheck::Exceeded {
+                    current_usd,
+                    limit_usd,
+                    period,
+                } => {
+                    return Err(anyhow::anyhow!(
+                        "Budget exceeded: ${:.4} of ${:.2} {:?} limit. Cannot make further API calls until the budget resets.",
+                        current_usd,
+                        limit_usd,
+                        period
+                    ));
+                }
+                BudgetCheck::Warning {
+                    current_usd,
+                    limit_usd,
+                    period,
+                } => match mode.as_str() {
+                    "block" => {
+                        return Err(anyhow::anyhow!(
+                            "Budget warning (mode=block): ${:.4} of ${:.2} {:?} limit. Blocked by cost.enforcement.mode=\"block\".",
+                            current_usd,
+                            limit_usd,
+                            period
+                        ));
+                    }
+                    "route_down" => {
+                        tracing::warn!(
+                            current_usd,
+                            limit_usd,
+                            ?period,
+                            mode = %mode,
+                            "Budget warning threshold reached; route_down requested but not yet wired \
+                             — proceeding with current model"
+                        );
+                    }
+                    _ => {
+                        tracing::warn!(
+                            current_usd,
+                            limit_usd,
+                            ?period,
+                            "Budget warning threshold reached"
+                        );
+                    }
+                },
+                BudgetCheck::Allowed => {}
+            }
         }
 
         // Unified path via Provider::chat so provider-specific native tool logic
@@ -2594,6 +2655,7 @@ pub async fn run(
         crate::cost::CostTracker::get_or_init_global(config.cost.clone(), &config.workspace_dir)
             .map(|tracker| {
                 ToolLoopCostTrackingContext::new(tracker, Arc::new(config.cost.prices.clone()))
+                    .with_enforcement(config.cost.enforcement.clone())
             });
 
     // ── Execute ──────────────────────────────────────────────────
@@ -3205,6 +3267,178 @@ pub async fn process_message(
 ) -> Result<String> {
     let observer: Arc<dyn Observer> =
         Arc::from(observability::create_observer(&config.observability));
+    process_message_with_observer(config, message, session_id, observer).await
+}
+
+/// Same as `process_message` but with an injected observer — lets the
+/// gateway pipe tool_call_start / agent_start / agent_end events from
+/// the agent loop into its SSE broadcast bus, so the dashboard
+/// constellation lights up while the bench runs.
+///
+/// This is the entry point the webhook + WebSocket chat use; CLI keeps
+/// `process_message` (which builds an observer from `[observability]`).
+/// Run ONE specific agent's preset directly against a brief, without
+/// a parent orchestrator LLM in the way.
+///
+/// This is the path the dashboard's QUICK ACTIONS use: the parent
+/// orchestrator (deepseek/mimo/whatever the fallback is) consistently
+/// re-calls `delegate(agent=X)` multiple times with identical args
+/// and trips the circuit breaker. Bypassing that loop entirely and
+/// running the named agent's preset directly is the architectural
+/// fix.
+///
+/// The agent's [agents.X] block in config provides: provider, model,
+/// system_prompt, allowed_tools, temperature, max_iterations, memory
+/// namespace. The brief becomes the user message. Tools fire normally
+/// (deliverable_write, memory_recall, etc.). The observer parameter
+/// is the gateway's SSE broadcast so the constellation animates.
+pub async fn run_named_agent(
+    config: Config,
+    agent_name: &str,
+    brief: &str,
+    observer: Arc<dyn Observer>,
+) -> Result<String> {
+    use crate::tools::delegate::DelegateTool;
+    use parking_lot::RwLock;
+    use std::sync::Arc as StdArc;
+
+    let agent_config = config.agents.get(agent_name).cloned().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Unknown agent '{agent_name}' — not configured in [agents.{agent_name}] block"
+        )
+    })?;
+
+    let runtime: StdArc<dyn platform::RuntimeAdapter> =
+        StdArc::from(platform::create_runtime(&config.runtime)?);
+    let security = StdArc::new(SecurityPolicy::from_config(
+        &config.autonomy,
+        &config.workspace_dir,
+    ));
+    let fallback = config.providers.fallback_provider();
+    let fallback_credential = fallback.and_then(|e| e.api_key.clone());
+    let provider_runtime_options =
+        zeroclaw_providers::provider_runtime_options_from_config(&config);
+    let mem: StdArc<dyn Memory> =
+        StdArc::from(zeroclaw_memory::create_memory_with_storage_and_routes(
+            &config.memory,
+            &config.providers.embedding_routes,
+            Some(&config.storage.provider.config),
+            &config.workspace_dir,
+            fallback.and_then(|e| e.api_key.as_deref()),
+        )?);
+
+    let (composio_key, composio_entity_id) = if config.composio.enabled {
+        (
+            config.composio.api_key.as_deref(),
+            Some(config.composio.entity_id.as_str()),
+        )
+    } else {
+        (None, None)
+    };
+
+    // Build the FULL tool registry so the sub-agent's allowlist has
+    // something to filter against. Without this, every tool name in
+    // [agents.X].allowed_tools resolves to "no executable tools"
+    // because the parent_tools list is empty.
+    let (tools_box, _delegate_handle, _r, _c, _a, _e) = crate::tools::all_tools_with_runtime(
+        StdArc::new(config.clone()),
+        &security,
+        runtime,
+        mem.clone(),
+        composio_key,
+        composio_entity_id,
+        &config.browser,
+        &config.http_request,
+        &config.web_fetch,
+        &config.workspace_dir,
+        &config.agents,
+        fallback.and_then(|e| e.api_key.as_deref()),
+        &config,
+        None,
+    );
+    // Convert Box<dyn Tool> → Arc<dyn Tool> for parent_tools.
+    let tool_arcs: Vec<StdArc<dyn crate::tools::Tool>> =
+        tools_box.into_iter().map(StdArc::from).collect();
+    let parent_tools = StdArc::new(RwLock::new(tool_arcs));
+
+    // Build a DelegateTool with just THIS agent registered + the
+    // full parent_tools registry so filtering produces a real toolset.
+    let mut just_this_agent = std::collections::HashMap::new();
+    just_this_agent.insert(agent_name.to_string(), agent_config.clone());
+
+    let delegate_tool = DelegateTool::new_with_options(
+        just_this_agent,
+        fallback_credential,
+        security.clone(),
+        provider_runtime_options,
+    )
+    .with_parent_tools(parent_tools)
+    .with_multimodal_config(config.multimodal.clone())
+    .with_delegate_config(config.delegate.clone())
+    .with_skills_prompt_mode(config.skills.prompt_injection_mode)
+    .with_context_token_budget(config.agent.max_context_tokens)
+    .with_workspace_dir(config.workspace_dir.clone())
+    .with_memory(mem.clone())
+    // Plumb the gateway's broadcast observer into the sub-agent loop
+    // so every tool_call_start / llm_request / agent_end inside the
+    // delegated agent reaches the SSE bus — that's what animates the
+    // constellation while the agent is actually executing.
+    .with_observer(observer.clone());
+
+    // Call execute() with the synchronous delegate args. The sub-agent
+    // loop emits its own tool_call / llm_request / agent_end events
+    // through the observer that the gateway broadcasts.
+    let args = serde_json::json!({
+        "agent": agent_name,
+        "prompt": brief,
+    });
+
+    observer.record_event(&observability::ObserverEvent::AgentStart {
+        provider: agent_config.provider.clone(),
+        model: agent_config.model.clone(),
+    });
+    let started = std::time::Instant::now();
+
+    let result = delegate_tool.execute(args).await;
+    let duration = started.elapsed();
+
+    match result {
+        Ok(tr) if tr.success => {
+            observer.record_event(&observability::ObserverEvent::AgentEnd {
+                provider: agent_config.provider.clone(),
+                model: agent_config.model.clone(),
+                duration,
+                tokens_used: None,
+                cost_usd: None,
+            });
+            Ok(tr.output)
+        }
+        Ok(tr) => {
+            let err = tr
+                .error
+                .unwrap_or_else(|| "sub-agent returned failure".to_string());
+            observer.record_event(&observability::ObserverEvent::Error {
+                component: format!("agent.{agent_name}"),
+                message: err.clone(),
+            });
+            Err(anyhow::anyhow!("agent '{agent_name}' failed: {err}"))
+        }
+        Err(e) => {
+            observer.record_event(&observability::ObserverEvent::Error {
+                component: format!("agent.{agent_name}"),
+                message: e.to_string(),
+            });
+            Err(e)
+        }
+    }
+}
+
+pub async fn process_message_with_observer(
+    config: Config,
+    message: &str,
+    session_id: Option<&str>,
+    observer: Arc<dyn Observer>,
+) -> Result<String> {
     let runtime: Arc<dyn platform::RuntimeAdapter> =
         Arc::from(platform::create_runtime(&config.runtime)?);
     let security = Arc::new(SecurityPolicy::from_config(
@@ -6519,6 +6753,55 @@ mod tests {
         assert!(!context.contains("embedding prior context"));
     }
 
+    #[tokio::test]
+    async fn build_context_for_role_excludes_already_injected_keys() {
+        use std::collections::HashSet;
+
+        let tmp = TempDir::new().unwrap();
+        let mem = SqliteMemory::new(tmp.path()).unwrap();
+        mem.store(
+            "compliance_rule_eu",
+            "EU AI Act high-risk classification triggers",
+            MemoryCategory::Core,
+            None,
+        )
+        .await
+        .unwrap();
+        mem.store(
+            "compliance_rule_us",
+            "SEC disclosure obligations for AI-driven advice",
+            MemoryCategory::Core,
+            None,
+        )
+        .await
+        .unwrap();
+
+        // First sub-agent: nothing excluded, both chunks come through and
+        // their keys are reported back.
+        let (first_preamble, first_keys) =
+            build_context_for_role(&mem, "compliance", 0.0, None, None, None).await;
+        assert!(first_preamble.contains("compliance_rule_eu"));
+        assert!(first_preamble.contains("compliance_rule_us"));
+        assert_eq!(first_keys.len(), 2);
+
+        // Second sub-agent in the same turn: caller passes the keys it
+        // already injected — they must not appear again.
+        let mut excluded: HashSet<String> = HashSet::new();
+        excluded.insert("compliance_rule_eu".to_string());
+
+        let (second_preamble, second_keys) =
+            build_context_for_role(&mem, "compliance", 0.0, None, None, Some(&excluded)).await;
+        assert!(
+            !second_preamble.contains("compliance_rule_eu"),
+            "excluded key should not be re-injected: {second_preamble}"
+        );
+        assert!(
+            second_preamble.contains("compliance_rule_us"),
+            "non-excluded key should still be present: {second_preamble}"
+        );
+        assert_eq!(second_keys, vec!["compliance_rule_us".to_string()]);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Recovery Tests - Tool Call Parsing Edge Cases
     // ═══════════════════════════════════════════════════════════════════════
@@ -7633,6 +7916,226 @@ Let me check the result."#;
         .expect("should succeed without cost scope");
 
         assert_eq!(result, "ok");
+    }
+
+    #[test]
+    fn preflight_estimate_uses_chars_per_token_and_pricing() {
+        use crate::agent::cost::estimate_call_cost_usd;
+        use std::collections::HashMap;
+        use zeroclaw_config::schema::ModelPricing;
+
+        let mut prices = HashMap::new();
+        prices.insert(
+            "mock/model".to_string(),
+            ModelPricing {
+                input: 1.0,
+                output: 2.0,
+            },
+        );
+
+        // role "user" (4) + content (4000) = 4004 chars → ~1001 input tokens.
+        // Output ceiling is 1024 tokens (DEFAULT_OUTPUT_TOKEN_ESTIMATE).
+        let messages = vec![ChatMessage::user("x".repeat(4000))];
+        let cost = estimate_call_cost_usd(&prices, "mock", "mock/model", &messages);
+
+        // input: 1001 / 1M * 1.0 = 0.001001
+        // output: 1024 / 1M * 2.0 = 0.002048
+        // total ≈ 0.003049
+        assert!(
+            (cost - 0.003049).abs() < 0.000_01,
+            "unexpected estimate: {cost}"
+        );
+    }
+
+    #[test]
+    fn preflight_estimate_returns_zero_without_pricing_entry() {
+        use crate::agent::cost::estimate_call_cost_usd;
+        use std::collections::HashMap;
+
+        let messages = vec![ChatMessage::user("hello")];
+        let cost = estimate_call_cost_usd(&HashMap::new(), "mock", "mock/model", &messages);
+        assert_eq!(cost, 0.0);
+    }
+
+    #[tokio::test]
+    async fn preflight_budget_blocks_warning_in_block_mode() {
+        use super::{
+            TOOL_LOOP_COST_TRACKING_CONTEXT, ToolLoopCostTrackingContext, run_tool_call_loop,
+        };
+        use crate::cost::CostTracker;
+        use crate::observability::noop::NoopObserver;
+        use std::collections::HashMap;
+        use zeroclaw_config::schema::{CostEnforcementConfig, ModelPricing};
+
+        // Provider should never be reached — pre-flight must block first.
+        let provider = ScriptedProvider::from_text_responses(vec!["should not reach this"]);
+        let observer = NoopObserver;
+        let workspace = tempfile::TempDir::new().unwrap();
+
+        let cost_config = zeroclaw_config::schema::CostConfig {
+            enabled: true,
+            daily_limit_usd: 1.0,
+            monthly_limit_usd: 100.0,
+            warn_at_percent: 50, // warning fires at $0.50
+            ..zeroclaw_config::schema::CostConfig::default()
+        };
+        let tracker = Arc::new(CostTracker::new(cost_config.clone(), workspace.path()).unwrap());
+
+        // Pre-record $0.60 — past the 50% warning threshold, below the $1.00 hard limit.
+        tracker
+            .record_usage(crate::cost::types::TokenUsage::new(
+                "mock-model",
+                600_000,
+                0,
+                1.0,
+                1.0,
+            ))
+            .unwrap();
+
+        let prices = HashMap::from([(
+            "mock-model".to_string(),
+            ModelPricing {
+                input: 1.0,
+                output: 1.0,
+            },
+        )]);
+        let ctx = ToolLoopCostTrackingContext::new(Arc::clone(&tracker), Arc::new(prices))
+            .with_enforcement(CostEnforcementConfig {
+                mode: "block".to_string(),
+                route_down_model: None,
+                reserve_percent: 10,
+            });
+
+        let mut history = vec![ChatMessage::system("test"), ChatMessage::user("hello")];
+
+        let err = TOOL_LOOP_COST_TRACKING_CONTEXT
+            .scope(
+                Some(ctx),
+                run_tool_call_loop(
+                    &provider,
+                    &mut history,
+                    &[],
+                    &observer,
+                    "mock-provider",
+                    "mock-model",
+                    0.0,
+                    true,
+                    None,
+                    "test",
+                    None,
+                    &zeroclaw_config::schema::MultimodalConfig::default(),
+                    2,
+                    None,
+                    None,
+                    None,
+                    &[],
+                    &[],
+                    None,
+                    None,
+                    &zeroclaw_config::schema::PacingConfig::default(),
+                    0,
+                    0,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            )
+            .await
+            .expect_err("tool loop should block on warning in block mode");
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Budget warning") && msg.contains("block"),
+            "error should mention budget+block, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn preflight_budget_proceeds_in_warn_mode() {
+        use super::{
+            TOOL_LOOP_COST_TRACKING_CONTEXT, ToolLoopCostTrackingContext, run_tool_call_loop,
+        };
+        use crate::cost::CostTracker;
+        use crate::observability::noop::NoopObserver;
+        use std::collections::HashMap;
+        use zeroclaw_config::schema::{CostEnforcementConfig, ModelPricing};
+
+        let provider = ScriptedProvider::from_text_responses(vec!["done"]);
+        let observer = NoopObserver;
+        let workspace = tempfile::TempDir::new().unwrap();
+
+        let cost_config = zeroclaw_config::schema::CostConfig {
+            enabled: true,
+            daily_limit_usd: 1.0,
+            monthly_limit_usd: 100.0,
+            warn_at_percent: 50,
+            ..zeroclaw_config::schema::CostConfig::default()
+        };
+        let tracker = Arc::new(CostTracker::new(cost_config.clone(), workspace.path()).unwrap());
+        tracker
+            .record_usage(crate::cost::types::TokenUsage::new(
+                "mock-model",
+                600_000,
+                0,
+                1.0,
+                1.0,
+            ))
+            .unwrap();
+
+        let prices = HashMap::from([(
+            "mock-model".to_string(),
+            ModelPricing {
+                input: 1.0,
+                output: 1.0,
+            },
+        )]);
+        let ctx = ToolLoopCostTrackingContext::new(Arc::clone(&tracker), Arc::new(prices))
+            .with_enforcement(CostEnforcementConfig {
+                mode: "warn".to_string(),
+                route_down_model: None,
+                reserve_percent: 10,
+            });
+
+        let mut history = vec![ChatMessage::system("test"), ChatMessage::user("hello")];
+
+        let result = TOOL_LOOP_COST_TRACKING_CONTEXT
+            .scope(
+                Some(ctx),
+                run_tool_call_loop(
+                    &provider,
+                    &mut history,
+                    &[],
+                    &observer,
+                    "mock-provider",
+                    "mock-model",
+                    0.0,
+                    true,
+                    None,
+                    "test",
+                    None,
+                    &zeroclaw_config::schema::MultimodalConfig::default(),
+                    2,
+                    None,
+                    None,
+                    None,
+                    &[],
+                    &[],
+                    None,
+                    None,
+                    &zeroclaw_config::schema::PacingConfig::default(),
+                    0,
+                    0,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            )
+            .await
+            .expect("warn mode should let the call proceed");
+
+        assert!(result.ends_with("done"), "expected 'done', got: {result}");
     }
 
     // ── append_receipt_footer tests ──────────────────────────────

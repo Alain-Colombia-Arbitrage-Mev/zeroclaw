@@ -4,12 +4,12 @@ use crate::observability::traits::{Observer, ObserverEvent, ObserverMetric};
 use crate::security::SecurityPolicy;
 use crate::security::policy::ToolOperation;
 use async_trait::async_trait;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use zeroclaw_api::tool::{Tool, ToolResult};
 use zeroclaw_config::schema::{DelegateAgentConfig, DelegateToolConfig};
@@ -20,6 +20,12 @@ use zeroclaw_providers::{self, ChatMessage, Provider};
 /// leaves it unset; matches the longstanding agentic default that balances
 /// coherence with enough variety to explore tool options.
 const DELEGATE_AGENTIC_DEFAULT_TEMPERATURE: f64 = 0.7;
+
+/// How long a memory entry key stays in the corpus dedupe cache. The intent
+/// is "skip re-injection across the consecutive sub-agent runs of a single
+/// user turn", not "skip across sessions" — 5 minutes is generous enough to
+/// cover a long advisor chain on a slow model and self-prunes quickly.
+const CORPUS_DEDUPE_TTL: Duration = Duration::from_secs(300);
 
 /// Serializable result of a background delegate task.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -72,12 +78,36 @@ pub struct DelegateTool {
     multimodal_config: zeroclaw_config::schema::MultimodalConfig,
     /// Global delegate tool config providing default timeout values.
     delegate_config: DelegateToolConfig,
+    /// Skills prompt injection mode inherited from the root agent. Sub-agents
+    /// re-build their system prompt on every delegation; injecting the full
+    /// skills catalogue (`Full`) into every sub-agent's prompt is the largest
+    /// token sink in long advisor chains. Default `Full` preserves legacy
+    /// behavior; production wires this from `config.skills.prompt_injection_mode`.
+    skills_prompt_mode: zeroclaw_config::schema::SkillsPromptInjectionMode,
+    /// Token budget that the sub-agent's tool-loop uses for preemptive history
+    /// pruning. `0` disables pruning. Sub-agents historically ran with `0`,
+    /// which let their conversation history grow unbounded across the
+    /// `max_iterations` of their loop — costly with long-running advisors.
+    /// Production wires this from `config.agent.max_context_tokens`.
+    context_token_budget: usize,
+    /// Recently-injected memory-entry keys with their last-seen timestamp.
+    /// Shared across all delegations done by this `DelegateTool` instance so
+    /// the consecutive sub-agents in a single user turn don't each re-inject
+    /// the same high-relevance regulatory / strategy corpus chunks. Entries
+    /// older than `CORPUS_DEDUPE_TTL` are dropped on access.
+    corpus_dedupe_cache: Arc<Mutex<HashMap<String, Instant>>>,
     /// Workspace directory inherited from the root agent context.
     workspace_dir: PathBuf,
     /// Cancellation token for cascade control of background tasks.
     cancellation_token: CancellationToken,
     /// Optional memory instance for namespace isolation on delegate agents.
     memory: Option<Arc<dyn Memory>>,
+    /// Optional observer that receives sub-agent loop events (tool calls,
+    /// LLM requests, agent start/end). When `None`, sub-agent events go
+    /// to a no-op sink (the original behavior). Set by `run_named_agent`
+    /// so the gateway's broadcast bus animates the constellation while
+    /// the sub-agent is actually executing.
+    observer: Option<Arc<dyn Observer>>,
 }
 
 impl DelegateTool {
@@ -109,9 +139,13 @@ impl DelegateTool {
             parent_tools: Arc::new(RwLock::new(Vec::new())),
             multimodal_config: zeroclaw_config::schema::MultimodalConfig::default(),
             delegate_config: DelegateToolConfig::default(),
+            skills_prompt_mode: zeroclaw_config::schema::SkillsPromptInjectionMode::Full,
+            context_token_budget: 0,
+            corpus_dedupe_cache: Arc::new(Mutex::new(HashMap::new())),
             workspace_dir: PathBuf::new(),
             cancellation_token: CancellationToken::new(),
             memory: None,
+            observer: None,
         }
     }
 
@@ -149,9 +183,13 @@ impl DelegateTool {
             parent_tools: Arc::new(RwLock::new(Vec::new())),
             multimodal_config: zeroclaw_config::schema::MultimodalConfig::default(),
             delegate_config: DelegateToolConfig::default(),
+            skills_prompt_mode: zeroclaw_config::schema::SkillsPromptInjectionMode::Full,
+            context_token_budget: 0,
+            corpus_dedupe_cache: Arc::new(Mutex::new(HashMap::new())),
             workspace_dir: PathBuf::new(),
             cancellation_token: CancellationToken::new(),
             memory: None,
+            observer: None,
         }
     }
 
@@ -173,6 +211,25 @@ impl DelegateTool {
     /// Attach global delegate tool configuration for default timeout values.
     pub fn with_delegate_config(mut self, config: DelegateToolConfig) -> Self {
         self.delegate_config = config;
+        self
+    }
+
+    /// Attach the operator-configured skills prompt injection mode.
+    /// Sub-agents inherit this so a `compact` setting in the operator config
+    /// actually reaches the prompt builder instead of defaulting to `Full`.
+    pub fn with_skills_prompt_mode(
+        mut self,
+        mode: zeroclaw_config::schema::SkillsPromptInjectionMode,
+    ) -> Self {
+        self.skills_prompt_mode = mode;
+        self
+    }
+
+    /// Attach a context-token budget for the sub-agent's tool-loop history
+    /// pruner. `0` keeps the legacy (unbounded) behavior. Wire from
+    /// `config.agent.max_context_tokens` to cap delegation history growth.
+    pub fn with_context_token_budget(mut self, budget: usize) -> Self {
+        self.context_token_budget = budget;
         self
     }
 
@@ -203,6 +260,16 @@ impl DelegateTool {
     /// Attach memory for namespace isolation on delegate agents.
     pub fn with_memory(mut self, memory: Arc<dyn Memory>) -> Self {
         self.memory = Some(memory);
+        self
+    }
+
+    /// Attach an observer that receives every sub-agent loop event
+    /// (tool calls, LLM requests, agent end). The gateway uses this to
+    /// forward SSE events to the dashboard so the constellation animates
+    /// while the sub-agent is actually running. Without it, sub-agent
+    /// events go to a no-op sink.
+    pub fn with_observer(mut self, observer: Arc<dyn Observer>) -> Self {
+        self.observer = Some(observer);
         self
     }
 
@@ -475,14 +542,38 @@ impl DelegateTool {
             // Threshold mirrors the orchestrator's recall — keep noisy
             // matches out of the sub-agent's context window.
             const SUB_AGENT_THRESHOLD: f64 = 0.4;
-            crate::agent::loop_::build_context_for_role(
+
+            // Snapshot the dedup cache: drop expired entries and collect the
+            // remaining keys to exclude from this delegation's recall. The
+            // mutex is held only long enough to prune + clone.
+            let excluded: HashSet<String> = {
+                let mut cache = self.corpus_dedupe_cache.lock();
+                let now = Instant::now();
+                cache.retain(|_, seen_at| now.duration_since(*seen_at) < CORPUS_DEDUPE_TTL);
+                cache.keys().cloned().collect()
+            };
+
+            let (preamble, injected) = crate::agent::loop_::build_context_for_role(
                 mem_ref,
                 prompt,
                 SUB_AGENT_THRESHOLD,
                 None,
                 Some(agent_name),
+                Some(&excluded),
             )
-            .await
+            .await;
+
+            // Record the keys we actually injected so the next sub-agent in
+            // this turn skips them.
+            if !injected.is_empty() {
+                let mut cache = self.corpus_dedupe_cache.lock();
+                let now = Instant::now();
+                for key in injected {
+                    cache.insert(key, now);
+                }
+            }
+
+            preamble
         } else {
             String::new()
         };
@@ -667,6 +758,9 @@ impl DelegateTool {
         let parent_tools = Arc::clone(&self.parent_tools);
         let multimodal_config = self.multimodal_config.clone();
         let delegate_config = self.delegate_config.clone();
+        let skills_prompt_mode = self.skills_prompt_mode;
+        let context_token_budget = self.context_token_budget;
+        let corpus_dedupe_cache = Arc::clone(&self.corpus_dedupe_cache);
         let workspace_dir = self.workspace_dir.clone();
         let child_token = self.cancellation_token.child_token();
         let task_id_clone = task_id.clone();
@@ -682,9 +776,13 @@ impl DelegateTool {
                 parent_tools,
                 multimodal_config,
                 delegate_config,
+                skills_prompt_mode,
+                context_token_budget,
+                corpus_dedupe_cache,
                 workspace_dir: workspace_dir.clone(),
                 cancellation_token: child_token.clone(),
                 memory: None,
+                observer: None,
             };
 
             let args_inner = json!({
@@ -824,6 +922,9 @@ impl DelegateTool {
             let parent_tools = Arc::clone(&self.parent_tools);
             let multimodal_config = self.multimodal_config.clone();
             let delegate_config = self.delegate_config.clone();
+            let skills_prompt_mode = self.skills_prompt_mode;
+            let context_token_budget = self.context_token_budget;
+            let corpus_dedupe_cache = Arc::clone(&self.corpus_dedupe_cache);
             let workspace_dir = self.workspace_dir.clone();
             let cancellation_token = self.cancellation_token.child_token();
             let agent_name = agent_name.clone();
@@ -840,9 +941,13 @@ impl DelegateTool {
                     parent_tools,
                     multimodal_config,
                     delegate_config,
+                    skills_prompt_mode,
+                    context_token_budget,
+                    corpus_dedupe_cache,
                     workspace_dir,
                     cancellation_token,
                     memory: None,
+                    observer: None,
                 };
                 let result = Box::pin(inner.execute_sync(&agent_name, &prompt, &args_clone)).await;
                 (agent_name, result)
@@ -1081,7 +1186,7 @@ impl DelegateTool {
             model_name: &agent_config.model,
             tools: sub_tools,
             skills: &skills,
-            skills_prompt_mode: zeroclaw_config::schema::SkillsPromptInjectionMode::Full,
+            skills_prompt_mode: self.skills_prompt_mode,
             identity_config: None,
             dispatcher_instructions: "",
 
@@ -1173,7 +1278,15 @@ impl DelegateTool {
         }
         history.push(ChatMessage::user(full_prompt.to_string()));
 
+        // Use the attached observer (set by `run_named_agent` to the
+        // gateway's broadcast observer) so sub-agent events actually
+        // animate the dashboard constellation. Fall back to a no-op
+        // sink when no observer is attached (legacy parent-LLM path).
         let noop_observer = NoopObserver;
+        let observer_ref: &dyn Observer = match self.observer.as_ref() {
+            Some(o) => o.as_ref(),
+            None => &noop_observer,
+        };
 
         let agentic_timeout_secs = agent_config
             .agentic_timeout_secs
@@ -1184,7 +1297,7 @@ impl DelegateTool {
                 provider,
                 &mut history,
                 &sub_tools,
-                &noop_observer,
+                observer_ref,
                 &agent_config.provider,
                 &agent_config.model,
                 temperature,
@@ -1202,8 +1315,8 @@ impl DelegateTool {
                 None,
                 None,
                 &zeroclaw_config::schema::PacingConfig::default(),
-                0,    // max_tool_result_chars: inherit from parent config in future
-                0,    // context_token_budget: 0 = disabled for subagents
+                0, // max_tool_result_chars: inherit from parent config in future
+                self.context_token_budget,
                 None, // shared_budget: TODO thread from parent in future
                 None, // channel: delegate subagents don't support approval
                 None, // receipt_generator
@@ -2091,6 +2204,75 @@ mod tests {
         assert!(
             prompt.contains("You are a code reviewer."),
             "should append operator system_prompt"
+        );
+
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn enriched_prompt_respects_skills_prompt_mode() {
+        let config = DelegateAgentConfig {
+            provider: "openrouter".to_string(),
+            model: "test-model".to_string(),
+            system_prompt: None,
+            api_key: None,
+            temperature: None,
+            max_depth: 3,
+            agentic: true,
+            allowed_tools: vec![],
+            max_iterations: 10,
+            timeout_secs: None,
+            agentic_timeout_secs: None,
+            skills_directory: None,
+            memory_namespace: None,
+        };
+
+        let workspace = std::env::temp_dir().join(format!(
+            "zeroclaw_delegate_skills_mode_test_{}",
+            uuid::Uuid::new_v4()
+        ));
+        let skill_dir = workspace.join("skills").join("demo-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: demo-skill\ndescription: demo skill for delegate prompt-mode test\n---\n\n\
+             # Demo skill\n\nThis is the FULL_BODY_MARKER instruction block that only `Full` mode inlines.\n",
+        )
+        .unwrap();
+
+        let tools: Vec<Box<dyn Tool>> = vec![];
+
+        let full_tool = DelegateTool::new(HashMap::new(), None, test_security())
+            .with_workspace_dir(workspace.clone())
+            .with_skills_prompt_mode(zeroclaw_config::schema::SkillsPromptInjectionMode::Full);
+        let full_prompt = full_tool
+            .build_enriched_system_prompt(&config, &tools, &workspace)
+            .unwrap();
+
+        let compact_tool = DelegateTool::new(HashMap::new(), None, test_security())
+            .with_workspace_dir(workspace.clone())
+            .with_skills_prompt_mode(zeroclaw_config::schema::SkillsPromptInjectionMode::Compact);
+        let compact_prompt = compact_tool
+            .build_enriched_system_prompt(&config, &tools, &workspace)
+            .unwrap();
+
+        assert!(
+            full_prompt.contains("FULL_BODY_MARKER"),
+            "Full mode should inline skill instructions; prompt:\n{full_prompt}"
+        );
+        assert!(
+            !compact_prompt.contains("FULL_BODY_MARKER"),
+            "Compact mode should NOT inline skill instructions; prompt:\n{compact_prompt}"
+        );
+        assert!(
+            compact_prompt.contains("to keep context compact"),
+            "Compact mode should announce on-demand skill loading; prompt:\n{compact_prompt}"
+        );
+        assert!(
+            compact_prompt.len() < full_prompt.len(),
+            "Compact prompt ({} bytes) should be smaller than Full prompt ({} bytes)",
+            compact_prompt.len(),
+            full_prompt.len()
         );
 
         let _ = std::fs::remove_dir_all(workspace);
