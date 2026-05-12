@@ -127,6 +127,7 @@ mod tests {
                 namespace: "default".into(),
                 importance: None,
                 superseded_by: None,
+                agent_id: None,
             }])
         }
 
@@ -238,6 +239,7 @@ mod tests {
                     namespace: "default".into(),
                     importance: None,
                     superseded_by: None,
+                    agent_id: None,
                 },
                 MemoryEntry {
                     id: "2".into(),
@@ -250,6 +252,7 @@ mod tests {
                     namespace: "default".into(),
                     importance: None,
                     superseded_by: None,
+                    agent_id: None,
                 },
             ]),
         };
@@ -279,6 +282,7 @@ mod tests {
                     namespace: "default".into(),
                     importance: None,
                     superseded_by: None,
+                    agent_id: None,
                 },
                 MemoryEntry {
                     id: "2".into(),
@@ -291,6 +295,7 @@ mod tests {
                     namespace: "default".into(),
                     importance: None,
                     superseded_by: None,
+                    agent_id: None,
                 },
             ]),
         };

@@ -44,6 +44,14 @@ pub struct MemoryEntry {
     /// If this entry was superseded by a newer conflicting entry.
     #[serde(default)]
     pub superseded_by: Option<String>,
+    /// Name of the agent (e.g. `cfo_advisor`, `ngo_architect`) that
+    /// wrote this entry. Lets recall consumers tell whose voice they
+    /// are reading — the LLM otherwise treats the whole shared memory
+    /// pool as an undifferentiated blob and can't synthesize between
+    /// competing positions. `None` for legacy entries and for entries
+    /// written outside an `ACTIVE_AGENT.scope(...)` block.
+    #[serde(default)]
+    pub agent_id: Option<String>,
 }
 
 fn default_namespace() -> String {

@@ -240,6 +240,8 @@ struct MemoryPayload {
     session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tenant_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    agent_id: Option<String>,
 }
 
 tokio::task_local! {
@@ -250,12 +252,30 @@ tokio::task_local! {
     /// filtering recall. `None` (or task-local unset) means the
     /// caller is in the global / single-tenant scope.
     pub static ACTIVE_TENANT: Option<String>;
+
+    /// Active agent for the current async task.
+    ///
+    /// Set by `delegate.execute_agentic` before scoping the sub-agent's
+    /// tool loop so every memory write the sub-agent makes is stamped
+    /// with its name. `None` for the top-level orchestrator and for
+    /// any code path that doesn't enter a delegate scope (CLI, cron,
+    /// tests).
+    pub static ACTIVE_AGENT: Option<String>;
 }
 
 /// Read the active tenant from task-local storage. Returns `None`
 /// when called outside an `ACTIVE_TENANT.scope(..)` block.
 fn current_tenant() -> Option<String> {
     ACTIVE_TENANT
+        .try_with(|t| t.clone())
+        .ok()
+        .flatten()
+}
+
+/// Read the active agent name from task-local storage. Returns `None`
+/// when called outside an `ACTIVE_AGENT.scope(..)` block.
+fn current_agent() -> Option<String> {
+    ACTIVE_AGENT
         .try_with(|t| t.clone())
         .ok()
         .flatten()
@@ -324,6 +344,7 @@ impl Memory for QdrantMemory {
             timestamp,
             session_id: session_id.map(str::to_string),
             tenant_id: current_tenant(),
+            agent_id: current_agent(),
         };
 
         // Delete any existing point with the same key first
@@ -494,6 +515,7 @@ impl Memory for QdrantMemory {
                     namespace: "default".into(),
                     importance: None,
                     superseded_by: None,
+                    agent_id: payload.agent_id,
                 })
             })
             .collect();
@@ -618,6 +640,7 @@ impl Memory for QdrantMemory {
                 namespace: "default".into(),
                 importance: None,
                 superseded_by: None,
+                agent_id: payload.agent_id,
             })
         });
 
@@ -698,6 +721,7 @@ impl Memory for QdrantMemory {
                     namespace: "default".into(),
                     importance: None,
                     superseded_by: None,
+                    agent_id: payload.agent_id,
                 })
             })
             .collect();
@@ -821,6 +845,7 @@ mod tests {
             timestamp: "2026-02-20T00:00:00Z".into(),
             session_id: Some("session-1".into()),
             tenant_id: None,
+            agent_id: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -838,6 +863,7 @@ mod tests {
             timestamp: "2026-02-20T00:00:00Z".into(),
             session_id: None,
             tenant_id: None,
+            agent_id: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();

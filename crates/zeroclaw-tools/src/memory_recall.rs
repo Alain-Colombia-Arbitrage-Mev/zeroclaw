@@ -125,9 +125,19 @@ impl Tool for MemoryRecallTool {
                     let score = entry
                         .score
                         .map_or_else(String::new, |s| format!(" [{:.0}%]", s * 100.0));
+                    // Surface the writing agent's name when present so the
+                    // reader (LLM) can synthesize between competing
+                    // positions instead of treating shared memory as
+                    // one undifferentiated blob. Falls back silently for
+                    // legacy / pre-provenance entries.
+                    let from = entry
+                        .agent_id
+                        .as_deref()
+                        .map(|a| format!(" (from: {a})"))
+                        .unwrap_or_default();
                     let _ = writeln!(
                         output,
-                        "- [{}] {}: {}{score}",
+                        "- [{}]{from} {}: {}{score}",
                         entry.category, entry.key, entry.content
                     );
                 }

@@ -1291,8 +1291,18 @@ impl DelegateTool {
         let agentic_timeout_secs = agent_config
             .agentic_timeout_secs
             .unwrap_or(self.delegate_config.agentic_timeout_secs);
-        let result = tokio::time::timeout(
-            Duration::from_secs(agentic_timeout_secs),
+        // Stamp every memory write the sub-agent makes with its name so
+        // siblings reading the same shared store can tell whose voice
+        // they're reading. Without this the recall output blends every
+        // agent's contributions into one undifferentiated stream and
+        // the LLM can't synthesize between positions. The ACTIVE_AGENT
+        // scope wraps the whole tool loop so nested tool calls inherit.
+        let agent_name_for_scope = agent_name.to_string();
+        // Bind temporaries that the run_tool_call_loop future borrows so
+        // their lifetime extends across the ACTIVE_AGENT.scope boundary.
+        let pacing_default = zeroclaw_config::schema::PacingConfig::default();
+        let tool_loop_future = zeroclaw_memory::qdrant::ACTIVE_AGENT.scope(
+            Some(agent_name_for_scope),
             run_tool_call_loop(
                 provider,
                 &mut history,
@@ -1314,7 +1324,7 @@ impl DelegateTool {
                 &[],
                 None,
                 None,
-                &zeroclaw_config::schema::PacingConfig::default(),
+                &pacing_default,
                 0, // max_tool_result_chars: inherit from parent config in future
                 self.context_token_budget,
                 None, // shared_budget: TODO thread from parent in future
@@ -1322,6 +1332,10 @@ impl DelegateTool {
                 None, // receipt_generator
                 None, // collected_receipts
             ),
+        );
+        let result = tokio::time::timeout(
+            Duration::from_secs(agentic_timeout_secs),
+            tool_loop_future,
         )
         .await;
 
