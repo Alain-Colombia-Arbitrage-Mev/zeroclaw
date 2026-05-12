@@ -50,6 +50,9 @@ const PROVIDER_OPTIONS = [
 // Models grouped by provider. Newest models listed first.
 const MODELS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
   openrouter: [
+    { value: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+    { value: 'deepseek/deepseek-v3.2', label: 'DeepSeek V3.2' },
+    { value: 'deepseek/deepseek-r1-0528', label: 'DeepSeek R1' },
     { value: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
     { value: 'anthropic/claude-opus-4-6', label: 'Claude Opus 4.6' },
     { value: 'anthropic/claude-4.5-sonnet', label: 'Claude 4.5 Sonnet' },
@@ -60,8 +63,6 @@ const MODELS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
     { value: 'google/gemini-3.1-pro', label: 'Gemini 3.1 Pro' },
     { value: 'google/gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
     { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-    { value: 'deepseek/deepseek-v3.2', label: 'DeepSeek V3.2' },
-    { value: 'deepseek/deepseek-r1-0528', label: 'DeepSeek R1' },
     { value: 'x-ai/grok-4.1-fast', label: 'Grok 4.1 Fast' },
     { value: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick 400B' },
     { value: 'meta-llama/llama-4-70b', label: 'Llama 4 70B' },
@@ -101,6 +102,7 @@ const MODELS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
     { value: 'codestral-latest', label: 'Codestral' },
   ],
   deepseek: [
+    { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
     { value: 'deepseek-chat', label: 'DeepSeek V3.2 Chat' },
     { value: 'deepseek-reasoner', label: 'DeepSeek R1 Reasoner' },
   ],
@@ -148,18 +150,54 @@ const MODELS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
   ],
 };
 
-export default function GeneralSection({ config, onUpdate }: Props) {
-  const provider = (config.default_provider as string) ?? 'openrouter';
-  const modelOptions = MODELS_BY_PROVIDER[provider];
-  const currentModel = (config.default_model as string) ?? '';
+// Schema-shaped views into the parsed config. The form previously wrote
+// to flat top-level keys (`default_provider`, `default_model`, …) which
+// the Rust `Config` deserialiser ignores — every save silently dropped
+// the change. We now operate on the real TOML paths:
+//   - `providers.fallback` → which provider entry is the default
+//   - `providers.models.<name>.model` → the model id for that entry
+//   - `providers.models.<name>.temperature` / `timeout_secs`
+type ConfigRecord = Record<string, unknown>;
 
-  // When provider changes, auto-select the first model for that provider
+function asRecord(value: unknown): ConfigRecord {
+  return value && typeof value === 'object' ? (value as ConfigRecord) : {};
+}
+
+export default function GeneralSection({ config, onUpdate }: Props) {
+  const providers = asRecord(config.providers);
+  const providerEntries = asRecord(providers.models);
+
+  const provider = (providers.fallback as string) ?? 'openrouter';
+  const modelOptions = MODELS_BY_PROVIDER[provider];
+
+  const currentEntry = asRecord(providerEntries[provider]);
+  const currentModel = (currentEntry.model as string) ?? '';
+  const currentTemperature = (currentEntry.temperature as number) ?? 0.7;
+  const currentTimeout = (currentEntry.timeout_secs as number) ?? 120;
+
+  // When the operator picks a new fallback provider, also seed its
+  // model entry with a sensible default so the next save produces a
+  // working `[providers.models.<provider>]` block instead of an empty
+  // one the runtime can't resolve.
   const handleProviderChange = (v: string) => {
-    onUpdate('default_provider', v);
+    onUpdate('providers.fallback', v);
     const models = MODELS_BY_PROVIDER[v];
-    if (models && models.length > 0) {
-      onUpdate('default_model', models[0]!.value);
+    const existingModel = (asRecord(providerEntries[v]).model as string) ?? '';
+    if (!existingModel && models && models.length > 0) {
+      onUpdate(`providers.models.${v}.model`, models[0]!.value);
     }
+  };
+
+  const handleModelChange = (v: string) => {
+    onUpdate(`providers.models.${provider}.model`, v);
+  };
+
+  const handleTemperatureChange = (v: number) => {
+    onUpdate(`providers.models.${provider}.temperature`, v);
+  };
+
+  const handleTimeoutChange = (v: number) => {
+    onUpdate(`providers.models.${provider}.timeout_secs`, v);
   };
 
   return (
@@ -179,7 +217,7 @@ export default function GeneralSection({ config, onUpdate }: Props) {
         {modelOptions ? (
           <Select
             value={modelOptions.some((o) => o.value === currentModel) ? currentModel : ''}
-            onChange={(v) => onUpdate('default_model', v)}
+            onChange={handleModelChange}
             options={[
               ...(currentModel && !modelOptions.some((o) => o.value === currentModel)
                 ? [{ value: currentModel, label: currentModel }]
@@ -191,7 +229,7 @@ export default function GeneralSection({ config, onUpdate }: Props) {
           <input
             type="text"
             value={currentModel}
-            onChange={(e) => onUpdate('default_model', e.target.value)}
+            onChange={(e) => handleModelChange(e.target.value)}
             placeholder="model name"
             className="input-electric text-sm px-3 py-1.5 w-52 font-mono"
           />
@@ -199,8 +237,8 @@ export default function GeneralSection({ config, onUpdate }: Props) {
       </FieldRow>
       <FieldRow label={t('config.field.default_temperature')} description={t('config.field.default_temperature.desc')}>
         <Slider
-          value={(config.default_temperature as number) ?? 0.7}
-          onChange={(v) => onUpdate('default_temperature', v)}
+          value={currentTemperature}
+          onChange={handleTemperatureChange}
           min={0}
           max={2}
           step={0.1}
@@ -208,8 +246,8 @@ export default function GeneralSection({ config, onUpdate }: Props) {
       </FieldRow>
       <FieldRow label={t('config.field.provider_timeout_secs')} description={t('config.field.provider_timeout_secs.desc')}>
         <NumberInput
-          value={(config.provider_timeout_secs as number) ?? 120}
-          onChange={(v) => onUpdate('provider_timeout_secs', v)}
+          value={currentTimeout}
+          onChange={handleTimeoutChange}
           min={1}
         />
       </FieldRow>

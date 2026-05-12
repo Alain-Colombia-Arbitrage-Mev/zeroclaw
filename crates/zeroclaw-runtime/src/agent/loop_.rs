@@ -3560,33 +3560,56 @@ pub async fn process_message_with_observer(
     }
 
     let provider_name = config.providers.fallback.as_deref().unwrap_or("openrouter");
-    let model_name = match fallback_provider_pm
-        .and_then(|e| e.model.as_deref())
+
+    // Optional override: if the operator has defined an
+    // `[agents.orchestrator]` block, prefer its `model` for the top-level
+    // loop. Lets the orchestrator run on a different model than the
+    // provider default that downstream sub-agents inherit, without
+    // touching the fallback provider's API key / base URL.
+    let orchestrator_override_model = config
+        .agents
+        .get("orchestrator")
+        .map(|a| a.model.as_str())
         .map(str::trim)
         .filter(|m| !m.is_empty())
-    {
-        Some(m) => m.to_string(),
-        None => match config.providers.resolve_default_model() {
-            Some(m) => {
-                tracing::warn!(
-                    provider = provider_name,
-                    model = %m,
-                    "fallback provider has no `model` set; using first configured \
-                     providers.models entry as default. Set [providers.models.{provider_name}] \
-                     model = \"...\" to silence this warning.",
-                );
-                m
-            }
-            None => {
-                anyhow::bail!(
-                    "no model configured: providers.fallback = {:?} resolves with no model, \
-                     and no [[providers.models.*]] entry has a `model` field set. \
-                     Configure at least one [providers.models.<name>] model = \"...\" \
-                     or define a [[model_routes]] hint.",
-                    config.providers.fallback,
-                )
-            }
-        },
+        .map(str::to_string);
+
+    let model_name = if let Some(m) = orchestrator_override_model {
+        tracing::info!(
+            provider = provider_name,
+            model = %m,
+            "Orchestrator model overridden via [agents.orchestrator]",
+        );
+        m
+    } else {
+        match fallback_provider_pm
+            .and_then(|e| e.model.as_deref())
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+        {
+            Some(m) => m.to_string(),
+            None => match config.providers.resolve_default_model() {
+                Some(m) => {
+                    tracing::warn!(
+                        provider = provider_name,
+                        model = %m,
+                        "fallback provider has no `model` set; using first configured \
+                         providers.models entry as default. Set [providers.models.{provider_name}] \
+                         model = \"...\" to silence this warning.",
+                    );
+                    m
+                }
+                None => {
+                    anyhow::bail!(
+                        "no model configured: providers.fallback = {:?} resolves with no model, \
+                         and no [[providers.models.*]] entry has a `model` field set. \
+                         Configure at least one [providers.models.<name>] model = \"...\" \
+                         or define a [[model_routes]] hint.",
+                        config.providers.fallback,
+                    )
+                }
+            },
+        }
     };
     let provider_runtime_options =
         zeroclaw_providers::provider_runtime_options_from_config(&config);

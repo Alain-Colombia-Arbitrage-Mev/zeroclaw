@@ -3876,8 +3876,8 @@ impl Default for ImageProviderFluxConfig {
 /// Standalone image generation tool configuration (`[image_gen]`).
 ///
 /// When enabled, registers an `image_gen` tool that generates images via
-/// fal.ai's synchronous API (Flux / Nano Banana models) and saves them
-/// to the workspace `images/` directory.
+/// the WaveSpeed.ai REST API (Nano Banana Pro, Flux, Seedream, Hidream,
+/// SDXL, …) and saves them to the workspace `images/` directory.
 #[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
 #[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
 #[prefix = "image-gen"]
@@ -3886,21 +3886,22 @@ pub struct ImageGenConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// Default fal.ai model identifier.
+    /// Default WaveSpeed model path (e.g. `google/nano-banana-pro`,
+    /// `bytedance/seedream-4`, `wavespeed-ai/flux-schnell`).
     #[serde(default = "default_image_gen_model")]
     pub default_model: String,
 
-    /// Environment variable name holding the fal.ai API key.
+    /// Environment variable name holding the WaveSpeed API key.
     #[serde(default = "default_image_gen_api_key_env")]
     pub api_key_env: String,
 }
 
 fn default_image_gen_model() -> String {
-    "fal-ai/flux/schnell".into()
+    "google/nano-banana-pro-text-to-image".into()
 }
 
 fn default_image_gen_api_key_env() -> String {
-    "FAL_API_KEY".into()
+    "WAVESPEED_API_KEY".into()
 }
 
 impl Default for ImageGenConfig {
