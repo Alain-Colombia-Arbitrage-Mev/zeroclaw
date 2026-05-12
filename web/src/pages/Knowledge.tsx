@@ -6,8 +6,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { Network, RefreshCcw, AlertCircle } from 'lucide-react';
-import { getKnowledgeGraph, type GraphifyGraph } from '../lib/api';
+import { Network, RefreshCcw, AlertCircle, Zap } from 'lucide-react';
+import {
+  buildKnowledgeGraph,
+  getKnowledgeGraph,
+  type GraphifyGraph,
+} from '../lib/api';
 
 interface GraphNode {
   id: string;
@@ -122,6 +126,8 @@ export default function Knowledge() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
 
@@ -132,6 +138,27 @@ export default function Knowledge() {
       .then((data) => setGraph(data))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
+  };
+
+  const triggerBuild = async () => {
+    setBuilding(true);
+    setBuildError(null);
+    try {
+      const result = await buildKnowledgeGraph();
+      if (!result.success) {
+        const detail =
+          result.error ??
+          result.stderr ??
+          `Graphify exited with code ${result.exit_code ?? 'unknown'}`;
+        setBuildError(detail);
+        return;
+      }
+      refresh();
+    } catch (e: unknown) {
+      setBuildError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBuilding(false);
+    }
   };
 
   useEffect(refresh, []);
@@ -206,22 +233,55 @@ export default function Knowledge() {
       )}
 
       {!error && graph && 'empty' in graph && graph.empty && (
-        <div className="card p-6">
-          <p className="font-medium mb-2" style={{ color: 'var(--pc-text-primary)' }}>
-            No knowledge graph generated yet
-          </p>
-          <p className="text-sm mb-4" style={{ color: 'var(--pc-text-secondary)' }}>
-            {graph.hint}
-          </p>
-          <pre
-            className="text-xs p-3 rounded-md overflow-x-auto"
-            style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--pc-text-secondary)' }}
-          >{`# From the project root
-pip install graphifyy
-graphify init .
+        <div className="card p-6 space-y-4">
+          <div>
+            <p className="font-medium mb-2" style={{ color: 'var(--pc-text-primary)' }}>
+              No knowledge graph generated yet
+            </p>
+            <p className="text-sm" style={{ color: 'var(--pc-text-secondary)' }}>
+              Build the graph now (runs <code className="font-mono text-[11px]">graphify update .</code> in
+              the workspace). First run can take a few minutes if semantic extraction is enabled.
+            </p>
+          </div>
 
-# Or via the agent
-zeroclaw chat 'use the graphify tool to init . in this workspace'`}</pre>
+          <button
+            onClick={triggerBuild}
+            disabled={building}
+            className="btn-electric flex items-center gap-2 px-4 py-2 text-sm"
+          >
+            <Zap className={`h-4 w-4 ${building ? 'animate-pulse' : ''}`} />
+            {building ? 'Building graph… (may take minutes)' : 'Build graph now'}
+          </button>
+
+          {buildError && (
+            <div className="flex items-start gap-2 text-sm" style={{ color: '#fca5a5' }}>
+              <AlertCircle className="h-4 w-4 mt-0.5" />
+              <div>
+                <p className="font-medium">Build failed</p>
+                <pre className="text-xs whitespace-pre-wrap mt-1" style={{ color: 'var(--pc-text-secondary)' }}>
+                  {buildError}
+                </pre>
+                <p className="text-xs mt-2" style={{ color: 'var(--pc-text-muted)' }}>
+                  Verify <code className="font-mono">graphify</code> is on the daemon's PATH
+                  (<code className="font-mono">pip install graphifyy</code>), or run the
+                  command manually from a terminal.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <details className="text-xs" style={{ color: 'var(--pc-text-muted)' }}>
+            <summary className="cursor-pointer">Manual alternatives</summary>
+            <pre
+              className="text-xs p-3 mt-2 rounded-md overflow-x-auto"
+              style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--pc-text-secondary)' }}
+            >{`# From a terminal in the workspace
+pip install graphifyy
+graphify update .
+
+# Or via the agent in chat
+zeroclaw chat 'use the graphify tool with action=init to build the graph'`}</pre>
+          </details>
         </div>
       )}
 

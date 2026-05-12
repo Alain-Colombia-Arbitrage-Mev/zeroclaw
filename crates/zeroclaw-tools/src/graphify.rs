@@ -94,10 +94,10 @@ impl Tool for GraphifyTool {
     fn description(&self) -> &str {
         "Run the Graphify CLI to build, query, or explain a knowledge \
          graph of a code/docs folder. Actions: init (scan a folder and \
-         emit graphify-out/), query (semantic question over the graph), \
-         path (find shortest path between two nodes), explain (rationale \
-         behind a node). Requires `graphify` on PATH — install via \
-         `pip install graphifyy`."
+         emit graphify-out/ — runs `graphify update .` under the hood), \
+         query (semantic question over the graph), path (find shortest \
+         path between two nodes), explain (rationale behind a node). \
+         Requires `graphify` on PATH — install via `pip install graphifyy`."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -200,8 +200,12 @@ impl Tool for GraphifyTool {
 
         match action {
             "init" => {
-                // `graphify .` is the canonical "scan a folder" command.
-                cmd.arg(".");
+                // The CLI dropped the bare `graphify .` form. The current
+                // one-shot builder is `graphify update .` — re-extracts code
+                // files and (re)creates `graphify-out/` if missing. We keep
+                // the action name `init` for backwards compat with the
+                // dashboard and prompt docs.
+                cmd.arg("update").arg(".");
             }
             "query" => {
                 let q = match args.get("question").and_then(|v| v.as_str()) {

@@ -513,3 +513,26 @@ export type GraphifyGraph =
 export function getKnowledgeGraph(): Promise<GraphifyGraph> {
   return apiFetch<GraphifyGraph>('/api/knowledge/graph');
 }
+
+/**
+ * Trigger a synchronous `graphify update .` run inside the workspace.
+ * The endpoint can take from seconds (warm cache) to several minutes
+ * on the first run with semantic extraction enabled — callers should
+ * disable the button and show a long-running indicator until this
+ * resolves.
+ */
+export interface KnowledgeGraphBuildResult {
+  success: boolean;
+  graph_exists?: boolean;
+  graph_path?: string;
+  stdout?: string;
+  stderr?: string;
+  exit_code?: number | null;
+  error?: string;
+}
+
+export function buildKnowledgeGraph(): Promise<KnowledgeGraphBuildResult> {
+  return apiFetch<KnowledgeGraphBuildResult>('/api/knowledge/graph/build', {
+    method: 'POST',
+  });
+}

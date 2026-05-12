@@ -977,11 +977,109 @@ pub async fn handle_api_knowledge_graph(
 
     Json(serde_json::json!({
         "empty": true,
-        "hint": "No graphify-out/graph.json found. Run `graphify init` from the project root \
-                 (pip install graphifyy) or invoke the `graphify` tool with action=\"init\" to \
-                 generate the graph.",
+        "hint": "No graphify-out/graph.json found. Click \"Build graph now\" above, run \
+                 `graphify update .` from the workspace root (pip install graphifyy), or \
+                 invoke the `graphify` tool with action=\"init\".",
     }))
     .into_response()
+}
+
+/// POST /api/knowledge/graph/build — run `graphify update .` inside the
+/// workspace, then return success/failure metadata so the dashboard can
+/// auto-refresh the graph view. Runs synchronously with a 10 min ceiling
+/// (graphify rebuilds are typically seconds on warm caches, minutes on a
+/// cold first run with semantic extraction enabled).
+pub async fn handle_api_knowledge_graph_build(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let workspace_dir = {
+        let cfg = state.config.lock();
+        cfg.workspace_dir.clone()
+    };
+
+    if !workspace_dir.is_dir() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "success": false,
+                "error": format!(
+                    "Workspace directory is missing: {}",
+                    workspace_dir.display()
+                ),
+            })),
+        )
+            .into_response();
+    }
+
+    let graphify_bin = if cfg!(target_os = "windows") {
+        "graphify.exe"
+    } else {
+        "graphify"
+    };
+
+    let mut cmd = tokio::process::Command::new(graphify_bin);
+    cmd.arg("update")
+        .arg(".")
+        .current_dir(&workspace_dir)
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+
+    let timeout = std::time::Duration::from_secs(600);
+    let exec = tokio::time::timeout(timeout, cmd.output()).await;
+
+    match exec {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let success = output.status.success();
+            let graph_path = workspace_dir.join("graphify-out").join("graph.json");
+            let graph_exists = graph_path.is_file();
+
+            let status = if success && graph_exists {
+                StatusCode::OK
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+
+            (
+                status,
+                Json(serde_json::json!({
+                    "success": success && graph_exists,
+                    "graph_exists": graph_exists,
+                    "graph_path": graph_path.display().to_string(),
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "exit_code": output.status.code(),
+                })),
+            )
+                .into_response()
+        }
+        Ok(Err(spawn_err)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "success": false,
+                "error": format!(
+                    "Failed to spawn `{graphify_bin}`. Install via `pip install graphifyy` \
+                     and ensure it is on PATH. Underlying: {spawn_err}"
+                ),
+            })),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(serde_json::json!({
+                "success": false,
+                "error": "Graphify build timed out after 600s. \
+                          Try running `graphify update .` from a terminal to surface progress.",
+            })),
+        )
+            .into_response(),
+    }
 }
 
 /// GET /api/cost — cost summary
