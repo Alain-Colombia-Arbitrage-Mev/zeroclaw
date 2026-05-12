@@ -97,10 +97,14 @@ RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace && \
 # ── Stage 2: Development Runtime (Debian) ────────────────────
 FROM debian:trixie-slim@sha256:f6e2cfac5cf956ea044b4bd75e6397b4372ad88fe00908045e9a0d21712ae3ba AS dev
 
-# Install essential runtime dependencies only (use docker-compose.override.yml for dev tools)
+# Install essential runtime dependencies only (use docker-compose.override.yml for dev tools).
+# ripgrep is required by the `content_search` tool — the daemon shells out
+# to `rg` (with grep as fallback) when an agent searches the workspace.
+# Without it every content_search call returns "program not found".
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
+    ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /zeroclaw-data /zeroclaw-data
@@ -133,12 +137,24 @@ HEALTHCHECK --interval=60s --timeout=10s --retries=3 --start-period=10s \
 ENTRYPOINT ["zeroclaw"]
 CMD ["daemon"]
 
+# ── Stage 3a: ripgrep extraction ─────────────────────────────
+# Distroless has no apt; pull a static `rg` binary out of a Debian
+# image and ship it as a sibling to the daemon so `content_search`
+# works in production without bundling a full shell.
+FROM debian:trixie-slim AS ripgrep-bin
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ripgrep \
+    && rm -rf /var/lib/apt/lists/*
+
 # ── Stage 3: Production Runtime (Distroless) ─────────────────
 FROM gcr.io/distroless/cc-debian13:nonroot@sha256:84fcd3c223b144b0cb6edc5ecc75641819842a9679a3a58fd6294bec47532bf7 AS release
 
 COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
 COPY --from=builder /zeroclaw-data /zeroclaw-data
 COPY --from=web-builder /web/dist /zeroclaw-data/web/dist
+# Required by the `content_search` tool. Without this the agent gets
+# "program not found" every time it searches the workspace.
+COPY --from=ripgrep-bin /usr/bin/rg /usr/local/bin/rg
 
 # Environment setup
 # Ensure UTF-8 locale so CJK / multibyte input is handled correctly

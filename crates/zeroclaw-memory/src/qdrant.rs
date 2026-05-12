@@ -403,23 +403,34 @@ impl Memory for QdrantMemory {
             }));
         }
         let tenant = current_tenant();
+        // Qdrant 1.10+ replaced the top-level `minimum_should_match`
+        // integer with a structured `min_should: { min_count, conditions }`
+        // block, and the conditions live inside it rather than next to
+        // `must` as a separate `should` array. The semantics we want here
+        // are "match tenant_id OR have no tenant_id (chunk applies to
+        // every tenant)" — express that via `min_should` with min_count=1
+        // so the constraint composes correctly with `must` clauses.
+        let tenant_conditions = |t: &str| -> Vec<serde_json::Value> {
+            vec![
+                serde_json::json!({"key": "tenant_id", "match": {"value": t}}),
+                serde_json::json!({"is_empty": {"key": "tenant_id"}}),
+            ]
+        };
         let filter: Option<serde_json::Value> = match (must_clauses.is_empty(), tenant.as_deref()) {
             (true, None) => None,
             (false, None) => Some(serde_json::json!({"must": must_clauses})),
             (true, Some(t)) => Some(serde_json::json!({
-                "should": [
-                    {"key": "tenant_id", "match": {"value": t}},
-                    {"is_empty": {"key": "tenant_id"}}
-                ],
-                "minimum_should_match": 1
+                "min_should": {
+                    "min_count": 1,
+                    "conditions": tenant_conditions(t),
+                }
             })),
             (false, Some(t)) => Some(serde_json::json!({
                 "must": must_clauses,
-                "should": [
-                    {"key": "tenant_id", "match": {"value": t}},
-                    {"is_empty": {"key": "tenant_id"}}
-                ],
-                "minimum_should_match": 1
+                "min_should": {
+                    "min_count": 1,
+                    "conditions": tenant_conditions(t),
+                }
             })),
         };
 
@@ -809,6 +820,7 @@ mod tests {
             category: "core".into(),
             timestamp: "2026-02-20T00:00:00Z".into(),
             session_id: Some("session-1".into()),
+            tenant_id: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -825,6 +837,7 @@ mod tests {
             category: "core".into(),
             timestamp: "2026-02-20T00:00:00Z".into(),
             session_id: None,
+            tenant_id: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();

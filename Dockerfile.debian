@@ -112,12 +112,15 @@ RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace /zeroclaw-data/we
 # ── Stage 2: Runtime (Debian with shell) ─────────────────────
 FROM debian:bookworm-slim AS runtime
 
-# Install essential tools for agent shell operations
+# Install essential tools for agent shell operations.
+# `ripgrep` is needed by the content_search tool — the daemon shells
+# out to `rg` for in-workspace searches.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
         curl \
         git \
+        ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
