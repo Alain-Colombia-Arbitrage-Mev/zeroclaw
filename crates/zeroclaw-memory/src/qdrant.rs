@@ -142,14 +142,33 @@ impl QdrantMemory {
             return Ok(());
         }
 
-        // Check if collection exists
-        let resp = self
-            .request(
-                reqwest::Method::GET,
-                &format!("/collections/{}", self.collection),
-            )
-            .send()
-            .await;
+        // Check if collection exists. On daemon startup the Qdrant
+        // container may still be coming up; retry the initial probe
+        // with exponential backoff before giving up so the first
+        // `memory_recall` after boot doesn't fail with "connection
+        // refused" (backoffs: 500 ms, 1 s, 2 s — ~3.5 s max wait).
+        let backoffs_ms: [u64; 3] = [500, 1000, 2000];
+        let mut backoffs = backoffs_ms.iter();
+        let resp = loop {
+            let attempt = self
+                .request(
+                    reqwest::Method::GET,
+                    &format!("/collections/{}", self.collection),
+                )
+                .send()
+                .await;
+            match attempt {
+                Ok(r) => break Ok(r),
+                Err(e) if e.is_connect() || e.is_timeout() => {
+                    let Some(&wait_ms) = backoffs.next() else {
+                        break Err(e);
+                    };
+                    tracing::debug!(wait_ms, error = %e, "Qdrant unreachable, retrying");
+                    tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
+                }
+                Err(e) => break Err(e), // non-transient (TLS, DNS, …)
+            }
+        };
 
         match resp {
             Ok(r) if r.status().is_success() => {
