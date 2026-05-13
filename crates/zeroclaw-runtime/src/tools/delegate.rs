@@ -302,6 +302,60 @@ impl DelegateTool {
     }
 }
 
+/// Scan `workspace/delegate_results/` and mark any entry still in
+/// `running` status as `failed("orphaned at startup")`. Background
+/// delegations run as tokio tasks inside the parent process; when the
+/// parent exits before they finish, the JSON result file is stuck in
+/// `running` forever. Run this at daemon (and CLI) startup so a fresh
+/// process inherits a consistent view.
+///
+/// Returns `(scanned, recovered)`. Uses blocking `std::fs` because it
+/// runs once at startup and the result directory is tiny.
+pub fn recover_orphaned_delegate_results(workspace_dir: &Path) -> (usize, usize) {
+    let dir = workspace_dir.join("delegate_results");
+    let read = match std::fs::read_dir(&dir) {
+        Ok(r) => r,
+        Err(_) => return (0, 0), // dir missing on first boot — not an error
+    };
+
+    let mut scanned = 0usize;
+    let mut recovered = 0usize;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        scanned += 1;
+        let raw = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let mut result: BackgroundDelegateResult = match serde_json::from_slice(&raw) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if result.status != BackgroundTaskStatus::Running {
+            continue;
+        }
+        result.status = BackgroundTaskStatus::Failed;
+        result.error = Some(
+            "Orphaned: parent process exited before the sub-agent finished. \
+             Re-delegate to retry."
+                .to_string(),
+        );
+        result.finished_at = Some(now.clone());
+        if let Ok(bytes) = serde_json::to_vec_pretty(&result) {
+            if std::fs::write(&path, bytes).is_ok() {
+                recovered += 1;
+            }
+        }
+    }
+
+    (scanned, recovered)
+}
+
 #[async_trait]
 impl Tool for DelegateTool {
     fn name(&self) -> &str {

@@ -96,6 +96,23 @@ pub async fn run(
 
     crate::health::mark_component_ok("daemon");
 
+    // Recover orphaned background delegations from a previous process
+    // lifecycle. Tokio tasks die with the process, so any
+    // `delegate_results/*.json` still in `running` is unreachable —
+    // mark it `failed` so polling tools (`check_result`) return a
+    // terminal state instead of waiting forever.
+    let (scanned, recovered) =
+        crate::tools::recover_orphaned_delegate_results(&config.workspace_dir);
+    if recovered > 0 {
+        tracing::warn!(
+            scanned,
+            recovered,
+            "Recovered orphaned delegate results from previous run"
+        );
+    } else if scanned > 0 {
+        tracing::debug!(scanned, "Delegate results scan: no orphans");
+    }
+
     // Shared broadcast channel so all daemon components (gateway, cron,
     // heartbeat) can publish real-time events to dashboard clients.
     let (event_tx, _rx) = tokio::sync::broadcast::channel::<serde_json::Value>(256);

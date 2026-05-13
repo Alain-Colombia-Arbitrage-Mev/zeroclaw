@@ -2269,6 +2269,21 @@ pub async fn run(
 
     let fallback_provider_loop = config.providers.fallback_provider();
 
+    // CLI sessions also write `delegate_results/*.json`; if the prior
+    // run exited mid-flight those entries are stuck `running` and
+    // `check_result` would poll forever. Mirror the daemon's recovery
+    // so a fresh CLI session starts from a clean slate. Cheap blocking
+    // scan — runs once at startup against a small directory.
+    let (scanned, recovered) =
+        crate::tools::recover_orphaned_delegate_results(&config.workspace_dir);
+    if recovered > 0 {
+        tracing::warn!(
+            scanned,
+            recovered,
+            "Recovered orphaned delegate results from previous run"
+        );
+    }
+
     // Top-level orchestrator on the CLI path may need a larger
     // tool-loop budget than a leaf agent: 1 iter to plan, 1 per
     // delegate spawn, 1 per status poll, 1 to consolidate. When the
