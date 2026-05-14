@@ -25,12 +25,24 @@ const MAX_RECONNECT_DELAY = 30000;
 
 export const SESSION_ID_STORAGE_KEY = 'zeroclaw_session_id';
 
-/** Return a stable session ID, persisted in localStorage across page reloads. */
-export function getOrCreateSessionId(): string {
-  let id = localStorage.getItem(SESSION_ID_STORAGE_KEY);
+/**
+ * Return a stable session ID for the given tenant, persisted in
+ * localStorage. When `tenantId` is omitted, returns the legacy
+ * single-tenant session id (for backwards compatibility).
+ *
+ * Per-tenant session ids let each company keep its own chat thread,
+ * its own backend session-state row, and its own scoped memory.
+ * Switching tenant in the dashboard pulls up that tenant's chat
+ * instead of leaking conversation across companies.
+ */
+export function getOrCreateSessionId(tenantId?: string | null): string {
+  const key = tenantId && tenantId.length > 0
+    ? `${SESSION_ID_STORAGE_KEY}__t_${tenantId}`
+    : SESSION_ID_STORAGE_KEY;
+  let id = localStorage.getItem(key);
   if (!id) {
     id = generateUUID();
-    localStorage.setItem(SESSION_ID_STORAGE_KEY, id);
+    localStorage.setItem(key, id);
   }
   return id;
 }
@@ -73,10 +85,19 @@ export class WebSocketClient {
     this.clearReconnectTimer();
 
     const token = getToken();
-    const sessionId = getOrCreateSessionId();
+    // Read active tenant first so we can derive a per-tenant session
+    // id (each tenant keeps its own thread + backend session-state row).
+    let activeTenant: string | null = null;
+    try {
+      activeTenant = localStorage.getItem('octopus_active_tenant');
+    } catch {
+      // localStorage may be blocked — fall back to no-tenant scope
+    }
+    const sessionId = getOrCreateSessionId(activeTenant);
     const params = new URLSearchParams();
     if (token) params.set('token', token);
     params.set('session_id', sessionId);
+    if (activeTenant) params.set('tenant', activeTenant);
     const url = `${this.baseUrl}${basePath}/ws/chat?${params.toString()}`;
 
     const protocols: string[] = ['zeroclaw.v1'];

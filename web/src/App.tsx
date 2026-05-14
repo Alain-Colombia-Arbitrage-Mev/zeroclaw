@@ -101,8 +101,31 @@ function PairingDialog({ onPair }: { onPair: (code: string) => Promise<void> }) 
   const [displayCode, setDisplayCode] = useState<string | null>(null);
   const [codeLoading, setCodeLoading] = useState(true);
 
-  // Fetch the current pairing code (public endpoint works in Docker too)
+  // Source priority for the pairing code, in order:
+  // 1. `?pair=NNNNNN` URL query — set by the QR-scan deep link from
+  //    the admin panel. This is how a brand-new remote device gets
+  //    the code without typing it.
+  // 2. `/admin/paircode` — works on localhost (no auth) so the
+  //    operator who just ran the daemon doesn't have to grep logs.
+  // 3. Manual entry — the field stays empty, the user types.
   useEffect(() => {
+    // 1) URL param wins
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get('pair');
+      if (fromUrl && /^\d{6}$/.test(fromUrl)) {
+        setDisplayCode(fromUrl);
+        setCode(fromUrl);
+        setCodeLoading(false);
+        // Strip the query so a refresh doesn't keep showing it after pair
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2) Admin endpoint (localhost-only in production; useful for dev)
     let cancelled = false;
     getAdminPairCode()
       .then((data) => {
@@ -112,7 +135,9 @@ function PairingDialog({ onPair }: { onPair: (code: string) => Promise<void> }) 
         }
       })
       .catch(() => {
-        // Endpoint not reachable — user must check terminal / docker logs
+        // Endpoint not reachable from a remote browser — that's fine,
+        // the code is shown on the admin panel of an already-paired
+        // device (or the operator's terminal).
       })
       .finally(() => {
         if (!cancelled) setCodeLoading(false);

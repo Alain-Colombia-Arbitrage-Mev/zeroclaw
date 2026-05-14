@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, User, AlertCircle, Copy, Check, X, Trash2, Minimize2, Maximize2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Send, Bot, User, AlertCircle, Copy, Check, X, Trash2, Minimize2, Maximize2, Building2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { WsMessage } from '@/types/api';
 import { WebSocketClient, getOrCreateSessionId } from '@/lib/ws';
 import { generateUUID } from '@/lib/uuid';
 import { useDraft } from '@/hooks/useDraft';
+import { useTenant } from '@/contexts/TenantContext';
 import { t } from '@/lib/i18n';
-import { getSessionMessages } from '@/lib/api';
+import { abortSession, deleteSession, getSessionMessages } from '@/lib/api';
+import { SESSION_ID_STORAGE_KEY } from '@/lib/ws';
 import ToolCallCard from '@/components/ToolCallCard';
 import type { ToolCallInfo } from '@/components/ToolCallCard';
 import {
@@ -31,7 +33,22 @@ interface ChatMessage {
 const DRAFT_KEY = 'agent-chat';
 
 export default function AgentChat() {
-  const sessionIdRef = useRef(getOrCreateSessionId());
+  // Per-tenant chat: each company gets its own session id, its own
+  // chat thread, its own backend session-state row. Switching tenant
+  // pulls up that tenant's conversation instead of leaking across
+  // companies. When no tenant is active (fresh install) we fall
+  // through to the legacy single-thread session id.
+  const { active: activeTenant } = useTenant();
+  const tenantId = activeTenant?.id ?? null;
+  const sessionId = useMemo(() => getOrCreateSessionId(tenantId), [tenantId]);
+  const sessionIdRef = useRef(sessionId);
+  // Keep the ref in sync — it's used by the persistence effect and
+  // the WS reconnect, both of which need the current value at call
+  // time without re-running on every state change.
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
   const { draft, saveDraft, clearDraft } = useDraft(DRAFT_KEY);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const persisted = loadChatHistory(sessionIdRef.current);
@@ -62,34 +79,31 @@ export default function AgentChat() {
     saveDraft(input);
   }, [input, saveDraft]);
 
-  // Hydrate chat from server (preferred) or localStorage fallback
+  // Hydrate chat from server (preferred) or localStorage fallback.
+  // Re-runs when the active tenant (and therefore session_id) changes,
+  // so switching tenant in the orchestrator pulls up that tenant's
+  // own thread instead of carrying the previous one over.
   useEffect(() => {
-    const sid = sessionIdRef.current;
+    const sid = sessionId;
     let cancelled = false;
+    setHistoryReady(false);
+
+    // Show whatever's already in localStorage for this session
+    // immediately so the chat doesn't flash empty before the server
+    // round-trip resolves.
+    const local = loadChatHistory(sid);
+    setMessages(local.length ? persistedToUiMessages(local) : []);
 
     (async () => {
       try {
         const res = await getSessionMessages(sid);
         if (cancelled) return;
         if (res.session_persistence && res.messages.length > 0) {
-          setMessages((prev) =>
-            prev.length > 0 ? prev : persistedToUiMessages(mapServerMessagesToPersisted(res.messages)),
-          );
-        } else if (!res.session_persistence) {
-          setMessages((prev) => {
-            if (prev.length > 0) return prev;
-            const ls = loadChatHistory(sid);
-            return ls.length ? persistedToUiMessages(ls) : prev;
-          });
+          setMessages(persistedToUiMessages(mapServerMessagesToPersisted(res.messages)));
         }
       } catch {
-        if (!cancelled) {
-          setMessages((prev) => {
-            if (prev.length > 0) return prev;
-            const ls = loadChatHistory(sid);
-            return ls.length ? persistedToUiMessages(ls) : prev;
-          });
-        }
+        // server unreachable — keep the localStorage snapshot we
+        // already painted above
       } finally {
         if (!cancelled) setHistoryReady(true);
       }
@@ -98,7 +112,7 @@ export default function AgentChat() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sessionId]);
 
   // Mirror transcript to localStorage (bounded); server remains source of truth when persistence is on
   useEffect(() => {
@@ -283,7 +297,12 @@ export default function AgentChat() {
     return () => {
       ws.disconnect();
     };
-  }, []);
+    // Re-key WS by sessionId so switching tenant tears down the
+    // current connection and opens a new one with the per-tenant
+    // session_id query param. Backend then pins the session row +
+    // tenant scope to that row.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -353,8 +372,47 @@ export default function AgentChat() {
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
   }, []);
 
-  const handleClearAll = useCallback(() => {
+  const handleClearAll = useCallback(async () => {
+    const sid = sessionIdRef.current;
     setMessages([]);
+    setStreamingContent('');
+    setStreamingThinking('');
+    pendingContentRef.current = '';
+    pendingThinkingRef.current = '';
+    capturedThinkingRef.current = '';
+
+    // Clear server-side session state (messages + state row) so a
+    // refresh doesn't re-hydrate the deleted thread from SQLite.
+    try {
+      await deleteSession(sid);
+    } catch {
+      // Server unreachable — local clear still happened
+    }
+
+    // Burn the per-tenant session id so the next message starts a
+    // fresh thread on a new id rather than reusing the deleted one.
+    const key = tenantId
+      ? `${SESSION_ID_STORAGE_KEY}__t_${tenantId}`
+      : SESSION_ID_STORAGE_KEY;
+    try {
+      localStorage.removeItem(key);
+      localStorage.removeItem(`zeroclaw_chat_history_v1:${sid}`);
+    } catch {
+      /* ignore */
+    }
+
+    // Force a reconnect with a fresh session id by toggling tenant
+    // dependency — easiest is a hard reload of this page.
+    window.location.reload();
+  }, [tenantId]);
+
+  const handleAbort = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    try {
+      await abortSession(sid);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Abort failed');
+    }
   }, []);
 
   const toggleCompact = useCallback(() => {
@@ -388,6 +446,58 @@ export default function AgentChat() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
+      {/* Tenant identity strip — shows which company this chat
+          belongs to. Each tenant has its own thread + session id;
+          switching tenant in /orchestrator pulls up the other one's
+          thread instead of leaking conversation across companies. */}
+      <div
+        className="px-4 py-2 border-b flex items-center gap-3 text-xs"
+        style={{
+          background: activeTenant
+            ? 'rgba(125, 211, 252, 0.04)'
+            : 'rgba(125, 211, 252, 0.02)',
+          borderColor: 'var(--pc-border)',
+          fontFamily: 'ui-monospace, monospace',
+        }}
+      >
+        <Building2
+          className="h-3.5 w-3.5 shrink-0"
+          style={{ color: activeTenant ? '#7DD3FC' : '#5BA8D9' }}
+        />
+        {activeTenant ? (
+          <>
+            <span style={{ color: '#5BA8D9', letterSpacing: '0.25em' }}>
+              MISSION
+            </span>
+            <span style={{ color: '#E0F2FE', letterSpacing: '0.08em', fontWeight: 600 }}>
+              {activeTenant.name.toUpperCase()}
+            </span>
+            <span style={{ color: 'rgba(125, 211, 252, 0.3)' }}>·</span>
+            <span style={{ color: '#94A3B8', letterSpacing: '0.18em' }}>
+              {activeTenant.category.toUpperCase()}
+            </span>
+            {activeTenant.activities && activeTenant.activities.length > 0 && (
+              <>
+                <span style={{ color: 'rgba(125, 211, 252, 0.3)' }}>·</span>
+                <span style={{ color: '#94A3B8' }}>
+                  +{activeTenant.activities.length} ACT
+                </span>
+              </>
+            )}
+            <span className="ml-auto" style={{ color: '#5BA8D9', letterSpacing: '0.15em' }}>
+              SESSION {sessionIdRef.current.slice(0, 8)}
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ color: '#94A3B8', letterSpacing: '0.18em' }}>
+              NO MISSION SELECTED · using shared thread. Pick a mission from
+              /orchestrator to scope this chat.
+            </span>
+          </>
+        )}
+      </div>
+
       {/* Connection status bar */}
       {error && (
         <div className="px-4 py-2 border-b flex items-center gap-2 text-sm animate-fade-in" style={{ background: 'rgba(239, 68, 68, 0.08)', borderColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', }}>
@@ -397,11 +507,30 @@ export default function AgentChat() {
       )}
 
       {/* Chat toolbar */}
-      {messages.length > 0 && (
+      {(messages.length > 0 || typing) && (
         <div
           className="flex items-center justify-end gap-2 px-4 py-2 border-b"
           style={{ background: 'var(--pc-bg-surface)', borderColor: 'var(--pc-border)' }}
         >
+          {typing && (
+            <button
+              type="button"
+              onClick={handleAbort}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md"
+              style={{
+                background: 'rgba(252, 211, 77, 0.12)',
+                border: '1px solid #FCD34D',
+                color: '#FCD34D',
+                fontFamily: 'ui-monospace, monospace',
+                letterSpacing: '0.15em',
+                fontWeight: 600,
+              }}
+              title="Abort the in-flight agent loop"
+              aria-label="Abort run"
+            >
+              <X className="h-3 w-3" /> ABORT RUN
+            </button>
+          )}
           <button
             type="button"
             onClick={toggleCompact}
@@ -417,6 +546,7 @@ export default function AgentChat() {
             onClick={handleClearAll}
             className="btn-danger flex items-center gap-1.5 text-xs"
             style={{ padding: '0.3rem 0.75rem', borderRadius: '0.5rem' }}
+            title="Delete this thread (server + local) and start fresh"
             aria-label={t('agent.clear_all')}
           >
             <Trash2 className="h-3 w-3" />

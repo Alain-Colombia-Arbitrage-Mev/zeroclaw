@@ -20,6 +20,17 @@ const PALETTES: Record<string, [string, string, string]> = {
   risk: ['#FCA5A5', '#EF4444', '#7F1D1D'],
   ideation: ['#FDBA74', '#F97316', '#7C2D12'],
   research: ['#A5F3FC', '#06B6D4', '#155E75'],
+  // Counsel / regulatory specialists — slate-violet so they read as
+  // legal, distinct from the red-tinted "risk" family.
+  legal: ['#C4B5FD', '#8B5CF6', '#4C1D95'],
+  // Mission-driven / nonprofit / climate — sage so it reads
+  // separate from "revenue" green.
+  impact: ['#A7F3D0', '#10B981', '#064E3B'],
+  // Sovereign / institutional — antique gold, distinct from
+  // "finance" yellow.
+  sovereign: ['#FDE68A', '#D97706', '#78350F'],
+  // Academic / research-grade analysis — indigo.
+  academic: ['#A5B4FC', '#6366F1', '#312E81'],
   default: ['#94A3B8', '#64748B', '#1E293B'],
 };
 
@@ -59,16 +70,31 @@ const ROLE_PALETTES: Record<string, keyof typeof PALETTES> = {
   sdr_outbound: 'revenue',
   account_executive: 'revenue',
   customer_success: 'revenue',
+  copywriter: 'business',
+  negotiator: 'revenue',
   // Finance & risk
   finance_controller: 'finance',
   risk_analyst: 'risk',
   cfo_advisor: 'finance',
+  deeptech_financier: 'finance',
   // C-suite
   ceo_advisor: 'csuite',
   cto_advisor: 'engineering',
-  // Security / legal
+  // Security / legal / regulatory counsel
   security: 'risk',
-  legal_compliance: 'risk',
+  legal_compliance: 'legal',
+  fintech_counsel: 'legal',
+  esg_energy_counsel: 'legal',
+  // Mission-driven / sovereign / academic specialists
+  ngo_architect: 'impact',
+  sovereign_advisor: 'sovereign',
+  phd_business: 'academic',
+  // Investigative / intelligence / data specialists
+  forensic_auditor: 'risk',
+  geospatial_analyst: 'research',
+  energy_grid_strategist: 'impact',
+  latam_solar_ngo_counsel: 'legal',
+  market_sentiment_analyst: 'research',
   // Data
   data_analyst: 'research',
   // Orchestrator

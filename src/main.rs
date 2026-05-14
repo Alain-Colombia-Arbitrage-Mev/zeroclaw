@@ -1135,6 +1135,32 @@ async fn main() -> Result<()> {
         unsafe { std::env::set_var("ZEROCLAW_CONFIG_DIR", config_dir) };
     }
 
+    // Load `.env.local` then `.env` from the config dir into the
+    // process environment BEFORE config or any MCP child spawns.
+    // This is what lets the user keep secrets like the 21st.dev API
+    // key in `~/.zeroclaw/.env.local` and reference them via
+    // `${VAR}` in config.toml. `.env.local` wins over `.env` for
+    // the same key (override semantics, not first-wins, so the
+    // local file is the source of truth).
+    //
+    // Failure to load is silent — `.env.local` is optional. Errors
+    // parsing a present file are logged after tracing init below.
+    {
+        let config_root = std::env::var("ZEROCLAW_CONFIG_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::env::var("HOME")
+                    .or_else(|_| std::env::var("USERPROFILE"))
+                    .map(|h| std::path::PathBuf::from(h).join(".zeroclaw"))
+                    .unwrap_or_default()
+            });
+        // Load .env.local first so its values land in env, then .env
+        // fills in keys .env.local omitted (since dotenvy::from_filename
+        // is first-wins on each key).
+        let _ = dotenvy::from_filename(config_root.join(".env.local"));
+        let _ = dotenvy::from_filename(config_root.join(".env"));
+    }
+
     // Completions must remain stdout-only and should not load config or initialize logging.
     // This avoids warnings/log lines corrupting sourced completion scripts.
     if let Commands::Completions { shell } = &cli.command {

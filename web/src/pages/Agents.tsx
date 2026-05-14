@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { Bot, Search, Wrench, Cpu, Layers, Database, LayoutGrid, Network } from 'lucide-react';
+import { Search, Wrench, Cpu, Layers, Database, LayoutGrid, Network } from 'lucide-react';
 import { getAgents, type AgentInfo } from '@/lib/api';
+import { PixelSigil } from '@/components/PixelSigil';
 import { t } from '@/lib/i18n';
 
 type ViewMode = 'cards' | 'graph';
@@ -255,11 +256,11 @@ export default function Agents() {
                     <div
                       className="shrink-0 h-10 w-10 rounded-xl flex items-center justify-center"
                       style={{
-                        background: 'var(--pc-accent-glow)',
+                        background: 'rgba(3, 6, 12, 0.6)',
                         border: '1px solid var(--pc-accent-dim)',
                       }}
                     >
-                      <Bot className="h-5 w-5" style={{ color: 'var(--pc-accent)' }} />
+                      <PixelSigil name={agent.name} size={32} state="idle" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">

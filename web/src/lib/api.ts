@@ -220,6 +220,8 @@ export type TenantCategory =
   | 'hardware'
   | 'media'
   | 'ai'
+  | 'energy'
+  | 'nonprofit'
   | 'other';
 
 export type TenantStage =
@@ -230,12 +232,24 @@ export type TenantStage =
   | 'growth'
   | 'scale';
 
+/// Cross-cutting activities that augment the primary category's
+/// recommended bench. A solar-energy company can be a Nonprofit AND
+/// have Satellite + Government activities at the same time.
+export type TenantActivity =
+  | 'nonprofit'
+  | 'satellite'
+  | 'government'
+  | 'regulated'
+  | 'hardware';
+
 export interface Tenant {
   id: string;
   name: string;
   category: TenantCategory;
   stage: TenantStage;
   mission: string;
+  description: string;
+  activities: TenantActivity[];
   agents: string[];
   created_at: string;
   updated_at: string;
@@ -257,6 +271,8 @@ export function createTenant(body: {
   category: TenantCategory;
   stage?: TenantStage;
   mission?: string;
+  description?: string;
+  activities?: TenantActivity[];
   agents?: string[];
 }): Promise<Tenant> {
   return apiFetch<Tenant>('/api/tenants', {
@@ -273,7 +289,12 @@ export function getTenant(id: string): Promise<{ tenant: Tenant; recommended_age
 
 export function updateTenant(
   id: string,
-  patch: Partial<Pick<Tenant, 'name' | 'category' | 'stage' | 'mission' | 'agents'>>,
+  patch: Partial<
+    Pick<
+      Tenant,
+      'name' | 'category' | 'stage' | 'mission' | 'description' | 'activities' | 'agents'
+    >
+  >,
 ): Promise<Tenant> {
   return apiFetch<Tenant>(`/api/tenants/${encodeURIComponent(id)}`, {
     method: 'PATCH',
@@ -466,6 +487,98 @@ export function getSessionMessages(id: string): Promise<SessionMessagesResponse>
   return apiFetch<SessionMessagesResponse>(
     `/api/sessions/${encodeURIComponent(id)}/messages`,
   );
+}
+
+/** Server-side delete: clears all messages + session_state row for this id. */
+export function deleteSession(id: string): Promise<void> {
+  return apiFetch<void>(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+/** Cancel an in-flight agent loop for this session — stops the current
+ *  delegation chain mid-run. The agent observes the cancel token and
+ *  returns the partial response (or an aborted error) within a few seconds. */
+export function abortSession(id: string): Promise<void> {
+  return apiFetch<void>(`/api/sessions/${encodeURIComponent(id)}/abort`, {
+    method: 'POST',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Workbench / artifacts (deliverables browser)
+// ---------------------------------------------------------------------------
+
+export interface DeliverableFileMeta {
+  name: string;
+  rel_path: string;
+  size_bytes: number;
+  mtime_iso: string;
+  mime: string;
+}
+
+export interface DeliverableRunMeta {
+  slug: string;
+  date: string;
+  files: DeliverableFileMeta[];
+}
+
+export interface DeliverableAgentMeta {
+  agent: string;
+  run_count: number;
+  file_count: number;
+  runs: DeliverableRunMeta[];
+}
+
+export interface DeliverableTreeResponse {
+  root: string;
+  agents: DeliverableAgentMeta[];
+  total_agents: number;
+  total_runs: number;
+  total_files: number;
+}
+
+export function getDeliverablesTree(): Promise<DeliverableTreeResponse> {
+  return apiFetch<DeliverableTreeResponse>('/api/files/deliverables');
+}
+
+export interface DeliverableReadResponse {
+  path: string;
+  mime: string;
+  size_bytes: number;
+  truncated: boolean;
+  content: string;
+  encoding: 'utf-8' | 'base64';
+}
+
+export function readDeliverable(relPath: string): Promise<DeliverableReadResponse> {
+  return apiFetch<DeliverableReadResponse>(
+    `/api/files/deliverables/raw?path=${encodeURIComponent(relPath)}`,
+  );
+}
+
+export interface DeliverableWipeResponse {
+  tenant: string;
+  removed: boolean;
+  files_deleted: number;
+  root: string;
+  legacy_root?: string | null;
+  legacy_removed?: boolean;
+  legacy_files_deleted?: number;
+}
+
+/** Wipe every deliverable under `companies/<tenant>/deliverables/`,
+ *  plus (when `includeLegacy=true`, the default) the pre-multi-tenant
+ *  `deliverables/` root that surfaces in the workbench as `· UNSCOPED`.
+ *  Used by LAUNCH FROM ZERO so the operator's bootstrap actually
+ *  starts from a clean slate. Refuses to run without tenant scope. */
+export function wipeDeliverables(
+  includeLegacy: boolean = true,
+): Promise<DeliverableWipeResponse> {
+  const qs = includeLegacy ? '?include_legacy=true' : '';
+  return apiFetch<DeliverableWipeResponse>(`/api/files/deliverables${qs}`, {
+    method: 'DELETE',
+  });
 }
 
 // ---------------------------------------------------------------------------
