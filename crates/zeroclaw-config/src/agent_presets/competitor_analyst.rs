@@ -25,10 +25,17 @@ pub fn competitor_analyst_preset(provider: &str, model: &str) -> DelegateAgentCo
 
 fn competitor_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "web_fetch", "knowledge", "graphify", "llm_task",
-        "memory_recall", "memory_store", "canvas",
+        "web_fetch",
+        "knowledge",
+        "graphify",
+        "llm_task",
+        "memory_recall",
+        "memory_store",
+        "canvas",
     ]
-    .iter().map(|s| (*s).to_string()).collect();
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
     tools.extend(context7_tools().iter().map(|s| (*s).to_string()));
     tools
 }
@@ -95,8 +102,10 @@ mod tests {
         let cfg = competitor_analyst_preset("openrouter", "any/model");
         let prompt = cfg.system_prompt.expect("must set a system prompt");
         for needle in [
-            "competitor analyst sub-agent", "Direct rivals only",
-            "Vulnerability lens", "Battlecards",
+            "competitor analyst sub-agent",
+            "Direct rivals only",
+            "Vulnerability lens",
+            "Battlecards",
             "context7__resolve-library-id",
         ] {
             assert!(prompt.contains(needle), "missing: '{needle}'");

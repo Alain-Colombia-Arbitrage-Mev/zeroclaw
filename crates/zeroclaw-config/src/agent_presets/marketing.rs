@@ -140,7 +140,10 @@ mod tests {
             "context7__resolve-library-id",
             "context7__get-library-docs",
         ] {
-            assert!(cfg.allowed_tools.iter().any(|t| t == required), "missing: {required}");
+            assert!(
+                cfg.allowed_tools.iter().any(|t| t == required),
+                "missing: {required}"
+            );
         }
     }
 

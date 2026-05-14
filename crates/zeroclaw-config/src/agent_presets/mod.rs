@@ -60,35 +60,55 @@ mod account_executive;
 mod adr_writer;
 mod architect;
 mod business_developer;
+mod capex_controller;
 mod ceo_advisor;
 mod cfo_advisor;
+mod chro;
 mod cicd;
 mod coder;
 mod common;
+mod community_growth_specialist;
 mod competitor_analyst;
 mod content_creator;
+mod content_strategist;
 mod copywriter;
+mod corp_dev;
 mod cto_advisor;
 mod customer_researcher;
 mod customer_success;
 mod data_analyst;
 mod db_designer;
+mod deeptech_financier;
 mod designer;
 mod devops;
 mod docs;
+mod energy_grid_strategist;
 mod esg_energy_counsel;
 mod finance_controller;
 mod fintech_counsel;
+mod forensic_auditor;
+mod fundraise_captain;
+mod general_counsel;
+mod geospatial_analyst;
 mod growth_hacker;
 mod idea_generator;
 mod idea_validator;
+mod internal_auditor;
+mod investor_relations;
+mod kpi_controller;
+mod latam_solar_ngo_counsel;
 mod legal_compliance;
 mod market_researcher;
+mod market_sentiment_analyst;
 mod marketing;
 mod negotiator;
+mod ngo_architect;
+mod personal_brand_strategist;
+mod phd_business;
 mod pivot_strategist;
 mod planner;
 mod pricing_strategist;
+mod privacy_officer;
 mod product_manager;
 mod qa;
 mod red_teamer;
@@ -98,40 +118,66 @@ mod scriptwriter;
 mod sdr_outbound;
 mod security;
 mod server_architect;
+mod sovereign_advisor;
+mod support_agent;
+mod tax_advisor;
 mod tester;
+mod treasurer;
+mod valuation_analyst;
+mod value_creation_strategist;
 
 pub use self::account_executive::account_executive_preset;
 pub use self::adr_writer::adr_writer_preset;
 pub use self::architect::architect_preset;
 pub use self::business_developer::business_developer_preset;
+pub use self::capex_controller::capex_controller_preset;
 pub use self::ceo_advisor::ceo_advisor_preset;
 pub use self::cfo_advisor::cfo_advisor_preset;
+pub use self::chro::chro_preset;
 pub use self::cicd::cicd_preset;
 pub use self::coder::coder_preset;
+pub use self::community_growth_specialist::community_growth_specialist_preset;
 pub use self::competitor_analyst::competitor_analyst_preset;
 pub use self::content_creator::content_creator_preset;
+pub use self::content_strategist::content_strategist_preset;
 pub use self::copywriter::copywriter_preset;
+pub use self::corp_dev::corp_dev_preset;
 pub use self::cto_advisor::cto_advisor_preset;
 pub use self::customer_researcher::customer_researcher_preset;
 pub use self::customer_success::customer_success_preset;
 pub use self::data_analyst::data_analyst_preset;
 pub use self::db_designer::db_designer_preset;
+pub use self::deeptech_financier::deeptech_financier_preset;
 pub use self::designer::designer_preset;
 pub use self::devops::devops_preset;
 pub use self::docs::docs_preset;
+pub use self::energy_grid_strategist::energy_grid_strategist_preset;
 pub use self::esg_energy_counsel::esg_energy_counsel_preset;
 pub use self::finance_controller::finance_controller_preset;
 pub use self::fintech_counsel::fintech_counsel_preset;
+pub use self::forensic_auditor::forensic_auditor_preset;
+pub use self::fundraise_captain::fundraise_captain_preset;
+pub use self::general_counsel::general_counsel_preset;
+pub use self::geospatial_analyst::geospatial_analyst_preset;
 pub use self::growth_hacker::growth_hacker_preset;
 pub use self::idea_generator::idea_generator_preset;
 pub use self::idea_validator::idea_validator_preset;
+pub use self::internal_auditor::internal_auditor_preset;
+pub use self::investor_relations::investor_relations_preset;
+pub use self::kpi_controller::kpi_controller_preset;
+pub use self::latam_solar_ngo_counsel::latam_solar_ngo_counsel_preset;
 pub use self::legal_compliance::legal_compliance_preset;
 pub use self::market_researcher::market_researcher_preset;
+pub use self::market_sentiment_analyst::market_sentiment_analyst_preset;
 pub use self::marketing::marketing_preset;
 pub use self::negotiator::negotiator_preset;
+pub use self::ngo_architect::ngo_architect_preset;
+pub use self::personal_brand_strategist::personal_brand_strategist_preset;
+pub use self::phd_business::phd_business_preset;
 pub use self::pivot_strategist::pivot_strategist_preset;
 pub use self::planner::planner_preset;
 pub use self::pricing_strategist::pricing_strategist_preset;
+pub use self::privacy_officer::privacy_officer_preset;
 pub use self::product_manager::product_manager_preset;
 pub use self::qa::qa_preset;
 pub use self::red_teamer::red_teamer_preset;
@@ -141,7 +187,13 @@ pub use self::scriptwriter::scriptwriter_preset;
 pub use self::sdr_outbound::sdr_outbound_preset;
 pub use self::security::security_preset;
 pub use self::server_architect::server_architect_preset;
+pub use self::sovereign_advisor::sovereign_advisor_preset;
+pub use self::support_agent::support_agent_preset;
+pub use self::tax_advisor::tax_advisor_preset;
 pub use self::tester::tester_preset;
+pub use self::treasurer::treasurer_preset;
+pub use self::valuation_analyst::valuation_analyst_preset;
+pub use self::value_creation_strategist::value_creation_strategist_preset;
 
 #[cfg(test)]
 mod tests {
@@ -163,38 +215,112 @@ mod tests {
             ("docs", docs_preset("openrouter", "x")),
             ("planner", planner_preset("openrouter", "x")),
             ("architect", architect_preset("openrouter", "x")),
-            ("server_architect", server_architect_preset("openrouter", "x")),
+            (
+                "server_architect",
+                server_architect_preset("openrouter", "x"),
+            ),
             ("db_designer", db_designer_preset("openrouter", "x")),
             ("adr_writer", adr_writer_preset("openrouter", "x")),
             ("security", security_preset("openrouter", "x")),
             ("marketing", marketing_preset("openrouter", "x")),
             ("content_creator", content_creator_preset("openrouter", "x")),
             ("scriptwriter", scriptwriter_preset("openrouter", "x")),
-            ("market_researcher", market_researcher_preset("openrouter", "x")),
-            ("business_developer", business_developer_preset("openrouter", "x")),
+            (
+                "market_researcher",
+                market_researcher_preset("openrouter", "x"),
+            ),
+            (
+                "business_developer",
+                business_developer_preset("openrouter", "x"),
+            ),
             ("product_manager", product_manager_preset("openrouter", "x")),
             ("growth_hacker", growth_hacker_preset("openrouter", "x")),
-            ("pricing_strategist", pricing_strategist_preset("openrouter", "x")),
+            (
+                "pricing_strategist",
+                pricing_strategist_preset("openrouter", "x"),
+            ),
             ("risk_analyst", risk_analyst_preset("openrouter", "x")),
-            ("finance_controller", finance_controller_preset("openrouter", "x")),
+            (
+                "finance_controller",
+                finance_controller_preset("openrouter", "x"),
+            ),
             ("data_analyst", data_analyst_preset("openrouter", "x")),
             ("ceo_advisor", ceo_advisor_preset("openrouter", "x")),
             ("idea_generator", idea_generator_preset("openrouter", "x")),
             ("idea_validator", idea_validator_preset("openrouter", "x")),
-            ("customer_researcher", customer_researcher_preset("openrouter", "x")),
-            ("competitor_analyst", competitor_analyst_preset("openrouter", "x")),
+            (
+                "customer_researcher",
+                customer_researcher_preset("openrouter", "x"),
+            ),
+            (
+                "competitor_analyst",
+                competitor_analyst_preset("openrouter", "x"),
+            ),
             ("red_teamer", red_teamer_preset("openrouter", "x")),
-            ("pivot_strategist", pivot_strategist_preset("openrouter", "x")),
+            (
+                "pivot_strategist",
+                pivot_strategist_preset("openrouter", "x"),
+            ),
             ("cfo_advisor", cfo_advisor_preset("openrouter", "x")),
             ("cto_advisor", cto_advisor_preset("openrouter", "x")),
             ("sdr_outbound", sdr_outbound_preset("openrouter", "x")),
-            ("account_executive", account_executive_preset("openrouter", "x")),
-            ("customer_success", customer_success_preset("openrouter", "x")),
-            ("legal_compliance", legal_compliance_preset("openrouter", "x")),
+            (
+                "account_executive",
+                account_executive_preset("openrouter", "x"),
+            ),
+            (
+                "customer_success",
+                customer_success_preset("openrouter", "x"),
+            ),
+            (
+                "legal_compliance",
+                legal_compliance_preset("openrouter", "x"),
+            ),
             ("copywriter", copywriter_preset("openrouter", "x")),
             ("negotiator", negotiator_preset("openrouter", "x")),
             ("fintech_counsel", fintech_counsel_preset("openrouter", "x")),
-            ("esg_energy_counsel", esg_energy_counsel_preset("openrouter", "x")),
+            (
+                "esg_energy_counsel",
+                esg_energy_counsel_preset("openrouter", "x"),
+            ),
+            ("phd_business", phd_business_preset("openrouter", "x")),
+            ("ngo_architect", ngo_architect_preset("openrouter", "x")),
+            (
+                "personal_brand_strategist",
+                personal_brand_strategist_preset("openrouter", "x"),
+            ),
+            (
+                "sovereign_advisor",
+                sovereign_advisor_preset("openrouter", "x"),
+            ),
+            (
+                "forensic_auditor",
+                forensic_auditor_preset("openrouter", "x"),
+            ),
+            (
+                "fundraise_captain",
+                fundraise_captain_preset("openrouter", "x"),
+            ),
+            (
+                "geospatial_analyst",
+                geospatial_analyst_preset("openrouter", "x"),
+            ),
+            (
+                "deeptech_financier",
+                deeptech_financier_preset("openrouter", "x"),
+            ),
+            (
+                "energy_grid_strategist",
+                energy_grid_strategist_preset("openrouter", "x"),
+            ),
+            (
+                "latam_solar_ngo_counsel",
+                latam_solar_ngo_counsel_preset("openrouter", "x"),
+            ),
+            (
+                "market_sentiment_analyst",
+                market_sentiment_analyst_preset("openrouter", "x"),
+            ),
         ]
     }
 

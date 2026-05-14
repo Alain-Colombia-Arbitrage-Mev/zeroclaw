@@ -27,11 +27,19 @@ pub fn fintech_counsel_preset(provider: &str, model: &str) -> DelegateAgentConfi
 
 fn fintech_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "memory_recall", "knowledge", "graphify", "llm_task",
-        "web_fetch", "memory_store", "canvas",
-        "file_read", "content_search",
+        "memory_recall",
+        "knowledge",
+        "graphify",
+        "llm_task",
+        "web_fetch",
+        "memory_store",
+        "canvas",
+        "file_read",
+        "content_search",
     ]
-    .iter().map(|s| (*s).to_string()).collect();
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
     tools.extend(context7_tools().iter().map(|s| (*s).to_string()));
     tools
 }
@@ -119,8 +127,12 @@ mod tests {
         let cfg = fintech_counsel_preset("openrouter", "any/model");
         let prompt = cfg.system_prompt.expect("must set a system prompt");
         for needle in [
-            "fintech counsel sub-agent", "Not legal advice",
-            "Risk-tier", "BSA", "MiCA", "Howey",
+            "fintech counsel sub-agent",
+            "Not legal advice",
+            "Risk-tier",
+            "BSA",
+            "MiCA",
+            "Howey",
             "context7__resolve-library-id",
         ] {
             assert!(prompt.contains(needle), "missing: '{needle}'");

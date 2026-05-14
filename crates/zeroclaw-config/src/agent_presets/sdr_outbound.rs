@@ -25,10 +25,17 @@ pub fn sdr_outbound_preset(provider: &str, model: &str) -> DelegateAgentConfig {
 
 fn sdr_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "web_fetch", "knowledge", "graphify", "llm_task",
-        "memory_recall", "memory_store", "canvas",
+        "web_fetch",
+        "knowledge",
+        "graphify",
+        "llm_task",
+        "memory_recall",
+        "memory_store",
+        "canvas",
     ]
-    .iter().map(|s| (*s).to_string()).collect();
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
     tools.extend(context7_tools().iter().map(|s| (*s).to_string()));
     tools
 }
@@ -97,8 +104,11 @@ mod tests {
         let cfg = sdr_outbound_preset("openrouter", "any/model");
         let prompt = cfg.system_prompt.expect("must set a system prompt");
         for needle in [
-            "SDR outbound sub-agent", "ICP fit", "Personalisation",
-            "Sequence shape", "context7__resolve-library-id",
+            "SDR outbound sub-agent",
+            "ICP fit",
+            "Personalisation",
+            "Sequence shape",
+            "context7__resolve-library-id",
         ] {
             assert!(prompt.contains(needle), "missing: '{needle}'");
         }

@@ -9,7 +9,9 @@ pub fn content_creator_preset(provider: &str, model: &str) -> DelegateAgentConfi
     DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
-        system_prompt: Some(format!("{SENIOR_PREAMBLE}\n\n{CONTENT_CREATOR_ROLE_PROMPT}")),
+        system_prompt: Some(format!(
+            "{SENIOR_PREAMBLE}\n\n{CONTENT_CREATOR_ROLE_PROMPT}"
+        )),
         api_key: None,
         temperature: Some(0.7),
         max_depth: 2,
@@ -140,7 +142,10 @@ mod tests {
             "context7__resolve-library-id",
             "context7__get-library-docs",
         ] {
-            assert!(cfg.allowed_tools.iter().any(|t| t == required), "missing: {required}");
+            assert!(
+                cfg.allowed_tools.iter().any(|t| t == required),
+                "missing: {required}"
+            );
         }
     }
 
@@ -159,7 +164,9 @@ mod tests {
     fn content_creator_preset_higher_temperature_than_coder() {
         use crate::agent_presets::coder_preset;
         let coder = coder_preset("openrouter", "x").temperature.unwrap();
-        let creator = content_creator_preset("openrouter", "x").temperature.unwrap();
+        let creator = content_creator_preset("openrouter", "x")
+            .temperature
+            .unwrap();
         assert!(creator > coder);
     }
 

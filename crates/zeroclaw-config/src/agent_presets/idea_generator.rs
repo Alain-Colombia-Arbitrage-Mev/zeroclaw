@@ -25,10 +25,17 @@ pub fn idea_generator_preset(provider: &str, model: &str) -> DelegateAgentConfig
 
 fn idea_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "web_fetch", "knowledge", "graphify", "llm_task",
-        "memory_recall", "memory_store", "canvas",
+        "web_fetch",
+        "knowledge",
+        "graphify",
+        "llm_task",
+        "memory_recall",
+        "memory_store",
+        "canvas",
     ]
-    .iter().map(|s| (*s).to_string()).collect();
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
     tools.extend(context7_tools().iter().map(|s| (*s).to_string()));
     tools
 }
@@ -90,7 +97,10 @@ mod tests {
     fn idea_generator_preset_is_agentic_with_high_temp() {
         let cfg = idea_generator_preset("openrouter", "any/model");
         assert!(cfg.agentic);
-        assert!(cfg.temperature.unwrap() >= 0.7, "divergent ideation needs temperature");
+        assert!(
+            cfg.temperature.unwrap() >= 0.7,
+            "divergent ideation needs temperature"
+        );
     }
 
     #[test]
@@ -98,8 +108,10 @@ mod tests {
         let cfg = idea_generator_preset("openrouter", "any/model");
         let prompt = cfg.system_prompt.expect("must set a system prompt");
         for needle in [
-            "idea generator sub-agent", "Diversity is the deliverable",
-            "Constraint-first", "context7__resolve-library-id",
+            "idea generator sub-agent",
+            "Diversity is the deliverable",
+            "Constraint-first",
+            "context7__resolve-library-id",
         ] {
             assert!(prompt.contains(needle), "missing: '{needle}'");
         }

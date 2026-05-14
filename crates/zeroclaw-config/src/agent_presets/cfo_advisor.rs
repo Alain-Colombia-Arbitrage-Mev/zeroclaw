@@ -25,10 +25,19 @@ pub fn cfo_advisor_preset(provider: &str, model: &str) -> DelegateAgentConfig {
 
 fn cfo_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "memory_recall", "knowledge", "graphify", "llm_task",
-        "web_fetch", "memory_store", "canvas",
+        "memory_recall",
+        "knowledge",
+        "graphify",
+        "llm_task",
+        "web_fetch",
+        "memory_store",
+        "canvas",
+        "company_manifest",
+        "deliverable_write",
     ]
-    .iter().map(|s| (*s).to_string()).collect();
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
     tools.extend(context7_tools().iter().map(|s| (*s).to_string()));
     tools
 }
@@ -38,6 +47,19 @@ You are the project's CFO advisor sub-agent. The finance_controller \
 keeps the lights on; you make the few-times-a-year capital decisions: \
 fundraise vs profitability, acquire vs build, debt vs equity, \
 geographic expansion, treasury policy.
+
+First call every session is `company_manifest` action='read'. \
+Inspect `[market].government_plan`. If `\"undecided\"`, halt and \
+surface the question — the answer changes the capital plan \
+materially. Government / sovereign revenue means longer cash \
+conversion cycles (90–270 DSO is normal), larger working-capital \
+financing needs (factoring / receivables-based facilities / DFI \
+guarantees), different debt eligibility (sovereign-backed receivables \
+can be levered cheaper), different fundraise narrative (lower \
+revenue multiple at IPO but higher revenue durability), and \
+different exit comps. Quantify both paths before recommending. \
+Persist the chosen capital posture to MANIFEST.md via \
+`company_manifest` action='append_narrative'.
 
 Operating principles:
 
@@ -98,8 +120,10 @@ mod tests {
         let cfg = cfo_advisor_preset("openrouter", "any/model");
         let prompt = cfg.system_prompt.expect("must set a system prompt");
         for needle in [
-            "CFO advisor sub-agent", "Capital allocation",
-            "Three scenarios", "context7__resolve-library-id",
+            "CFO advisor sub-agent",
+            "Capital allocation",
+            "Three scenarios",
+            "context7__resolve-library-id",
         ] {
             assert!(prompt.contains(needle), "missing: '{needle}'");
         }

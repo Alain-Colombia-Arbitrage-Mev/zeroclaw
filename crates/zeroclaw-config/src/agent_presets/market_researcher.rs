@@ -9,7 +9,9 @@ pub fn market_researcher_preset(provider: &str, model: &str) -> DelegateAgentCon
     DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
-        system_prompt: Some(format!("{SENIOR_PREAMBLE}\n\n{MARKET_RESEARCHER_ROLE_PROMPT}")),
+        system_prompt: Some(format!(
+            "{SENIOR_PREAMBLE}\n\n{MARKET_RESEARCHER_ROLE_PROMPT}"
+        )),
         api_key: None,
         temperature: Some(0.4),
         max_depth: 2,
@@ -158,7 +160,10 @@ mod tests {
             "context7__resolve-library-id",
             "context7__get-library-docs",
         ] {
-            assert!(cfg.allowed_tools.iter().any(|t| t == required), "missing: {required}");
+            assert!(
+                cfg.allowed_tools.iter().any(|t| t == required),
+                "missing: {required}"
+            );
         }
     }
 
@@ -177,7 +182,10 @@ mod tests {
     fn market_researcher_preset_moderate_temperature() {
         let cfg = market_researcher_preset("openrouter", "any/model");
         let t = cfg.temperature.unwrap();
-        assert!((0.3..=0.5).contains(&t), "research wants grounded output, not invention: got {t}");
+        assert!(
+            (0.3..=0.5).contains(&t),
+            "research wants grounded output, not invention: got {t}"
+        );
     }
 
     #[test]

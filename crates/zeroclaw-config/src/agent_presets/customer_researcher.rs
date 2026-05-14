@@ -25,10 +25,17 @@ pub fn customer_researcher_preset(provider: &str, model: &str) -> DelegateAgentC
 
 fn custres_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "web_fetch", "knowledge", "graphify", "llm_task",
-        "memory_recall", "memory_store", "canvas",
+        "web_fetch",
+        "knowledge",
+        "graphify",
+        "llm_task",
+        "memory_recall",
+        "memory_store",
+        "canvas",
     ]
-    .iter().map(|s| (*s).to_string()).collect();
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
     tools.extend(context7_tools().iter().map(|s| (*s).to_string()));
     tools
 }
@@ -97,8 +104,10 @@ mod tests {
         let cfg = customer_researcher_preset("openrouter", "any/model");
         let prompt = cfg.system_prompt.expect("must set a system prompt");
         for needle in [
-            "customer researcher sub-agent", "Jobs-to-be-Done",
-            "Past behaviour", "context7__resolve-library-id",
+            "customer researcher sub-agent",
+            "Jobs-to-be-Done",
+            "Past behaviour",
+            "context7__resolve-library-id",
         ] {
             assert!(prompt.contains(needle), "missing: '{needle}'");
         }

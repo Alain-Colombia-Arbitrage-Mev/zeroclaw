@@ -134,7 +134,10 @@ mod tests {
             "context7__resolve-library-id",
             "context7__get-library-docs",
         ] {
-            assert!(cfg.allowed_tools.iter().any(|t| t == required), "missing: {required}");
+            assert!(
+                cfg.allowed_tools.iter().any(|t| t == required),
+                "missing: {required}"
+            );
         }
     }
 
@@ -142,7 +145,10 @@ mod tests {
     fn designer_preset_does_not_grant_shell_or_git() {
         let cfg = designer_preset("openrouter", "any/model");
         for forbidden in ["shell", "git_operations"] {
-            assert!(!cfg.allowed_tools.iter().any(|t| t == forbidden), "must not include {forbidden}");
+            assert!(
+                !cfg.allowed_tools.iter().any(|t| t == forbidden),
+                "must not include {forbidden}"
+            );
         }
     }
 

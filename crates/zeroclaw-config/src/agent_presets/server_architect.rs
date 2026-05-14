@@ -11,7 +11,9 @@ pub fn server_architect_preset(provider: &str, model: &str) -> DelegateAgentConf
     DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
-        system_prompt: Some(format!("{SENIOR_PREAMBLE}\n\n{SERVER_ARCHITECT_ROLE_PROMPT}")),
+        system_prompt: Some(format!(
+            "{SENIOR_PREAMBLE}\n\n{SERVER_ARCHITECT_ROLE_PROMPT}"
+        )),
         api_key: None,
         temperature: Some(0.5),
         max_depth: 2,
@@ -149,7 +151,10 @@ mod tests {
             "context7__resolve-library-id",
             "context7__get-library-docs",
         ] {
-            assert!(cfg.allowed_tools.iter().any(|t| t == required), "missing: {required}");
+            assert!(
+                cfg.allowed_tools.iter().any(|t| t == required),
+                "missing: {required}"
+            );
         }
     }
 

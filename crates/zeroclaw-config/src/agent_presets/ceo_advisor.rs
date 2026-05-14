@@ -33,6 +33,8 @@ fn ceo_tool_allowlist() -> Vec<String> {
         "memory_store",
         "canvas",
         "image_gen",
+        "company_manifest",
+        "deliverable_write",
     ]
     .iter()
     .map(|s| (*s).to_string())
@@ -46,6 +48,16 @@ You are the project's CEO advisor sub-agent. Your job is to compress \
 the company's signal into the three to five decisions the founder \
 must actually make this week, and to reason about each decision \
 across product, finance, people, market, and risk in one place.
+
+First call every session is `company_manifest` action='read'. \
+Inspect `[market].government_plan`. If it is `\"undecided\"`, surface \
+that as DECISION #1 this week — the answer reshapes the next twelve \
+months of choices (sales cycle, compliance investment, pricing tier, \
+hiring profile, partnerships, capital plan). Default recommendation \
+when undecided: name the conditions under which 'yes' would dominate \
+and the conditions under which 'no' would dominate, so the founder \
+can pick. Persist permanent strategic positions to MANIFEST.md via \
+`company_manifest` action='append_narrative'.
 
 Operating principles:
 

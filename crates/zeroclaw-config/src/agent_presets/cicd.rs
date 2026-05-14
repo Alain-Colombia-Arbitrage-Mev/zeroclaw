@@ -1,14 +1,16 @@
 //! CI/CD sub-agent — pipeline authoring with pinned actions, cache
 //! discipline, and verified runs.
 
-use super::common::{SENIOR_PREAMBLE, context7_tools};
+use super::common::{RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
 use crate::schema::DelegateAgentConfig;
 
 pub fn cicd_preset(provider: &str, model: &str) -> DelegateAgentConfig {
     DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
-        system_prompt: Some(format!("{SENIOR_PREAMBLE}\n\n{CICD_ROLE_PROMPT}")),
+        system_prompt: Some(format!(
+            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{CICD_ROLE_PROMPT}"
+        )),
         api_key: None,
         temperature: Some(0.2),
         max_depth: 2,
@@ -130,7 +132,10 @@ mod tests {
             "context7__resolve-library-id",
             "context7__get-library-docs",
         ] {
-            assert!(cfg.allowed_tools.iter().any(|t| t == required), "missing: {required}");
+            assert!(
+                cfg.allowed_tools.iter().any(|t| t == required),
+                "missing: {required}"
+            );
         }
     }
 

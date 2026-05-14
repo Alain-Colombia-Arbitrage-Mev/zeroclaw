@@ -4,14 +4,16 @@
 //! which is unit-test focused; this preset spans the test pyramid
 //! and owns release-readiness reporting.
 
-use super::common::{SENIOR_PREAMBLE, context7_tools};
+use super::common::{RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
 use crate::schema::DelegateAgentConfig;
 
 pub fn qa_preset(provider: &str, model: &str) -> DelegateAgentConfig {
     DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
-        system_prompt: Some(format!("{SENIOR_PREAMBLE}\n\n{QA_ROLE_PROMPT}")),
+        system_prompt: Some(format!(
+            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{QA_ROLE_PROMPT}"
+        )),
         api_key: None,
         temperature: Some(0.3),
         max_depth: 2,
@@ -145,7 +147,10 @@ mod tests {
             "context7__resolve-library-id",
             "context7__get-library-docs",
         ] {
-            assert!(cfg.allowed_tools.iter().any(|t| t == required), "missing: {required}");
+            assert!(
+                cfg.allowed_tools.iter().any(|t| t == required),
+                "missing: {required}"
+            );
         }
     }
 

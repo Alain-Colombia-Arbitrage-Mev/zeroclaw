@@ -25,11 +25,24 @@ pub fn cto_advisor_preset(provider: &str, model: &str) -> DelegateAgentConfig {
 
 fn cto_tool_allowlist() -> Vec<String> {
     let mut tools: Vec<String> = [
-        "web_fetch", "knowledge", "graphify", "llm_task",
-        "memory_recall", "memory_store", "canvas",
-        "file_read", "content_search",
+        "web_fetch",
+        "web_search",
+        "knowledge",
+        "graphify",
+        "llm_task",
+        "memory_recall",
+        "memory_store",
+        "canvas",
+        "file_read",
+        "content_search",
+        "glob_search",
+        "deliverable_write",
+        "decision_log",
+        "delegate",
     ]
-    .iter().map(|s| (*s).to_string()).collect();
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
     tools.extend(context7_tools().iter().map(|s| (*s).to_string()));
     tools
 }
@@ -73,6 +86,40 @@ Output structure:
 6. **Single review checkpoint** — the metric or milestone that, if \
    missed, triggers re-decision
 
+Tech-DD readiness mode (when fundraise_captain delegates DD prep, \
+or when a strategic deal triggers buyer technical review):
+
+You own the data-room technical sections. Read \
+`skills/business-frameworks/tech-dd-readiness.md` first; it has \
+the canonical 6-section data-room layout and the 14-day prep \
+sprint. Apply it literally. Specific deliverables you produce:
+
+- **Architecture diagram (one page).** Current state with data \
+  flow + auth + external dependencies. Generate from \
+  `graphify` if codebase is accessible.
+- **ADR log (top 5-10 architecture decisions).** Each ADR: date, \
+  context, options considered, decision, consequences. Persist \
+  via `deliverable_write` to `companies/<tenant>/architecture/adrs/`.
+- **Tech stack inventory** with version numbers and EOL/upgrade \
+  pressure flags.
+- **Scaling proof-points** — load-test results, current peak \
+  RPS, p99 latency at peak, cost per request.
+- **Tech-debt register** — top 10 known issues + planned fix \
+  dates. Honest is mandatory; reviewers check.
+- **Security posture summary** — auth approach, secrets mgmt, \
+  encryption posture, vulnerability scan results, SOC 2 status. \
+  Coordinate with `security` agent for the deep security audit; \
+  you summarize for the data room.
+
+Then prepare the founder for the reviewer Q&A call (60-min \
+session that follows the data-room review):
+- The 3 sharpest questions the reviewer is likely to ask, with \
+  prepared 2-paragraph answers each
+- The 3 trap questions (\"when was your last security incident?\") \
+  with the honest answer that earns trust
+- The 1 known weakness to surface PROACTIVELY before the reviewer \
+  finds it (intellectual honesty earns more than denial)
+
 Out of scope: per-system architecture (architect_preset), code-level \
 implementation (coder), infra deployment (devops_preset), data-base \
 schema (db_designer).";
@@ -99,8 +146,11 @@ mod tests {
         let cfg = cto_advisor_preset("openrouter", "any/model");
         let prompt = cfg.system_prompt.expect("must set a system prompt");
         for needle in [
-            "CTO advisor sub-agent", "3-year commitment",
-            "Build vs buy", "Conway", "context7__resolve-library-id",
+            "CTO advisor sub-agent",
+            "3-year commitment",
+            "Build vs buy",
+            "Conway",
+            "context7__resolve-library-id",
         ] {
             assert!(prompt.contains(needle), "missing: '{needle}'");
         }
