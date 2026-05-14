@@ -152,6 +152,7 @@ mod tests {
                 importance: Some(0.7),
                 superseded_by: None,
                 agent_id: None,
+            tier: None,
             },
             MemoryEntry {
                 id: "2".into(),
@@ -165,6 +166,7 @@ mod tests {
                 importance: Some(0.3),
                 superseded_by: None,
                 agent_id: None,
+            tier: None,
             },
         ];
 

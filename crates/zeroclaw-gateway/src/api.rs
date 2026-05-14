@@ -264,6 +264,10 @@ pub struct TenantCreateBody {
     #[serde(default)]
     pub mission: Option<String>,
     #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub activities: Option<Vec<super::tenants::TenantActivity>>,
+    #[serde(default)]
     pub agents: Option<Vec<String>>,
 }
 
@@ -285,6 +289,8 @@ pub async fn handle_api_tenants_create(
             .stage
             .unwrap_or(super::tenants::TenantStage::Ideation),
         mission: body.mission.unwrap_or_default(),
+        description: body.description.unwrap_or_default(),
+        activities: body.activities.unwrap_or_default(),
         agents: body.agents.unwrap_or_default(),
         created_at: now,
         updated_at: now,
@@ -311,7 +317,7 @@ pub async fn handle_api_tenant_get(
     }
     match state.tenants.get(&id) {
         Some(t) => {
-            let recommended = t.category.recommended_agents();
+            let recommended = t.recommended_bench();
             Json(serde_json::json!({
                 "tenant": t,
                 "recommended_agents": recommended,
@@ -2092,6 +2098,7 @@ mod tests {
             web_dist_dir: None,
             canvas_store: zeroclaw_runtime::tools::CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            tenants: crate::tenants::TenantRegistry::load(std::path::Path::new(".")),
             #[cfg(feature = "webauthn")]
             webauthn: None,
         }

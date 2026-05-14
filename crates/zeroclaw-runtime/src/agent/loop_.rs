@@ -1009,6 +1009,7 @@ pub async fn run_tool_call_loop(
             enabled: pacing.loop_detection_enabled,
             window_size: pacing.loop_detection_window_size,
             max_repeats: pacing.loop_detection_max_repeats,
+            exempt_tools: dedup_exempt_tools.to_vec(),
         },
     );
 
@@ -2269,6 +2270,34 @@ pub async fn run(
 
     let fallback_provider_loop = config.providers.fallback_provider();
 
+    // CLI sessions also write `delegate_results/*.json`; if the prior
+    // run exited mid-flight those entries are stuck `running` and
+    // `check_result` would poll forever. Mirror the daemon's recovery
+    // so a fresh CLI session starts from a clean slate. Cheap blocking
+    // scan — runs once at startup against a small directory.
+    let (scanned, recovered) =
+        crate::tools::recover_orphaned_delegate_results(&config.workspace_dir);
+    if recovered > 0 {
+        tracing::warn!(
+            scanned,
+            recovered,
+            "Recovered orphaned delegate results from previous run"
+        );
+    }
+
+    // Top-level orchestrator on the CLI path may need a larger
+    // tool-loop budget than a leaf agent: 1 iter to plan, 1 per
+    // delegate spawn, 1 per status poll, 1 to consolidate. When the
+    // operator has set `[agents.orchestrator] max_iterations`, prefer
+    // it over the global `[agent].max_tool_iterations`. Match the
+    // semantics of the model override above (`orchestrator_override_model`).
+    let orchestrator_max_iterations = config
+        .agents
+        .get("orchestrator")
+        .map(|a| a.max_iterations)
+        .filter(|n| *n > 0)
+        .unwrap_or(config.agent.max_tool_iterations);
+
     // ── Memory (the brain) ────────────────────────────────────────
     let mem: Arc<dyn Memory> = Arc::from(zeroclaw_memory::create_memory_with_storage_and_routes(
         &config.memory,
@@ -2768,7 +2797,7 @@ pub async fn run(
                         channel_name,
                         None,
                         &config.multimodal,
-                        config.agent.max_tool_iterations,
+                        orchestrator_max_iterations,
                         None,
                         None,
                         None,
@@ -3080,7 +3109,7 @@ pub async fn run(
                             channel_name,
                             None,
                             &config.multimodal,
-                            config.agent.max_tool_iterations,
+                            orchestrator_max_iterations,
                             Some(cancel_token.clone()),
                             Some(delta_tx.clone()),
                             None,
@@ -3574,6 +3603,19 @@ pub async fn process_message_with_observer(
         .filter(|m| !m.is_empty())
         .map(str::to_string);
 
+    // Same precedence for the tool-loop iteration budget: a top-level
+    // orchestrator that fans out to sub-agents needs more iterations
+    // than a leaf agent (1 to plan, 1 per delegate spawn, 1 per status
+    // poll, 1 to consolidate). When `[agents.orchestrator]
+    // max_iterations` is set, honor it instead of the global
+    // `[agent].max_tool_iterations` default.
+    let orchestrator_max_iterations = config
+        .agents
+        .get("orchestrator")
+        .map(|a| a.max_iterations)
+        .filter(|n| *n > 0)
+        .unwrap_or(config.agent.max_tool_iterations);
+
     let model_name = if let Some(m) = orchestrator_override_model {
         tracing::info!(
             provider = provider_name,
@@ -3820,7 +3862,7 @@ pub async fn process_message_with_observer(
         "daemon",
         None,
         &config.multimodal,
-        config.agent.max_tool_iterations,
+        orchestrator_max_iterations,
         Some(&approval_manager),
         &excluded_tools,
         &config.agent.tool_call_dedup_exempt,

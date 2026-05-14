@@ -26,6 +26,13 @@ pub struct LoopDetectorConfig {
     pub window_size: usize,
     /// How many consecutive exact-repeat calls before escalation starts.
     pub max_repeats: usize,
+    /// Tools that legitimately repeat (e.g. `delegate` polling
+    /// `check_result` until a background task completes). The detector
+    /// records their calls into the window for ping-pong / no-progress
+    /// analysis but never raises Warning / Block / Break for them.
+    /// Wired from `config.agent.tool_call_dedup_exempt` at the runtime
+    /// call site.
+    pub exempt_tools: Vec<String>,
 }
 
 impl Default for LoopDetectorConfig {
@@ -34,6 +41,7 @@ impl Default for LoopDetectorConfig {
             enabled: true,
             window_size: 20,
             max_repeats: 3,
+            exempt_tools: Vec::new(),
         }
     }
 }
@@ -145,6 +153,20 @@ impl LoopDetector {
             self.window.pop_front();
         }
         self.window.push_back(record);
+
+        // Exempt tools (e.g. `delegate` polling `check_result`) are
+        // recorded for ping-pong / no-progress analysis of *other*
+        // tools but never raise their own Warning / Block / Break.
+        // Without this, legitimate background-task polling triggers
+        // the circuit breaker on the 5th identical poll.
+        if self
+            .config
+            .exempt_tools
+            .iter()
+            .any(|exempt| exempt == name)
+        {
+            return LoopDetectionResult::Ok;
+        }
 
         // Run detectors in escalation order (most severe first).
         if let Some(result) = self.detect_exact_repeat() {

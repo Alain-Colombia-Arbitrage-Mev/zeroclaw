@@ -15,6 +15,7 @@ pub mod api_plugins;
 pub mod api_webauthn;
 pub mod auth_rate_limit;
 pub mod canvas;
+pub mod files_api;
 pub mod hardware_context;
 pub mod node_tool;
 pub mod nodes;
@@ -89,6 +90,126 @@ pub const IDEMPOTENCY_MAX_KEYS_DEFAULT: usize = 10_000;
 
 fn webhook_memory_key() -> String {
     format!("webhook_msg_{}", Uuid::new_v4())
+}
+
+/// Build the structured preamble that gets prepended to a delegation
+/// message when a tenant is selected. Carries the company's identity
+/// + mission + description + activities into every sub-agent call so
+/// the bench knows which venture it's reasoning about.
+///
+/// Output is XML-ish so the LLM doesn't confuse it with the operator's
+/// own prose. Truncates the description at 4 KB to keep the preamble
+/// from blowing the context window on tenants with very long briefs —
+/// the agent can call memory_recall for the full text if needed.
+fn format_tenant_preamble(tenant: &tenants::Tenant) -> String {
+    const MAX_DESCRIPTION_CHARS: usize = 4096;
+    let activities = if tenant.activities.is_empty() {
+        "(none)".to_string()
+    } else {
+        tenant
+            .activities
+            .iter()
+            .map(|a| match a {
+                tenants::TenantActivity::Nonprofit => "nonprofit",
+                tenants::TenantActivity::Satellite => "satellite",
+                tenants::TenantActivity::Government => "government",
+                tenants::TenantActivity::Regulated => "regulated",
+                tenants::TenantActivity::Hardware => "hardware",
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut description = tenant.description.clone();
+    if description.chars().count() > MAX_DESCRIPTION_CHARS {
+        let truncated: String = description.chars().take(MAX_DESCRIPTION_CHARS).collect();
+        description = format!("{truncated}\n[…truncated; call memory_recall for full text]");
+    }
+    let recommended_bench = tenant.recommended_bench().join(", ");
+
+    // Heuristic: infer the operator's working language from the tenant
+    // mission + description. If a majority of the text reads as Spanish,
+    // tell the sub-agent to write the deliverable in Spanish. Same for
+    // Portuguese (BR tenants). Default English.
+    let lang_hint = detect_working_language(&tenant.mission, &tenant.description);
+
+    format!(
+        "<tenant_context>\n\
+         You are operating on behalf of the tenant '{name}' (id={id}). \
+         Treat every conclusion, recommendation, and artifact as belonging \
+         to this venture. When tasked with vague or generic prompts, \
+         interpret them in this tenant's context.\n\
+         \n\
+         Category: {category}\n\
+         Stage: {stage}\n\
+         Activities: {activities}\n\
+         Recommended bench (delegate to these first): {bench}\n\
+         Working language: {lang}\n\
+         \n\
+         Mission: {mission}\n\
+         \n\
+         Description:\n{description}\n\
+         </tenant_context>\n\
+         \n\
+         <writing_protocol>\n\
+         Every deliverable you save via `deliverable_write` MUST be in \
+         {lang}. Apply the `humanizer` skill before writing: strip AI \
+         tells (delve, robust, leverage, em-dash overuse, rule-of-three \
+         everywhere, hedge stacking, negative parallelisms). Read as a \
+         senior operator wrote it, not as a model produced it.\n\
+         </writing_protocol>",
+        name = tenant.name,
+        id = tenant.id,
+        category = tenant.category.label(),
+        stage = tenant.stage.label(),
+        activities = activities,
+        bench = recommended_bench,
+        lang = lang_hint,
+        mission = if tenant.mission.is_empty() { "(not set)" } else { &tenant.mission },
+        description = if description.is_empty() { "(not set)" } else { &description },
+    )
+}
+
+/// Crude language detection: counts Spanish vs Portuguese vs English
+/// markers in the tenant's own copy. Good enough to set the working
+/// language for an operator who described their venture in Spanish.
+/// Returns a human-readable label the LLM will honour ("Spanish (es)",
+/// "Portuguese (pt-BR)", "English (en)").
+fn detect_working_language(mission: &str, description: &str) -> &'static str {
+    let blob = format!("{mission} {description}").to_lowercase();
+    if blob.trim().is_empty() {
+        return "English (en)";
+    }
+    // Stop-word heuristic — distinctive function words per language
+    // count more than nouns. Spanish "que/de/la/el/y", Portuguese
+    // "que/de/da/do/em/é", English "the/and/of/to/is".
+    let es_markers = [
+        " que ", " de ", " la ", " el ", " los ", " las ", " y ", " un ",
+        " una ", " del ", " para ", " con ", " por ", " en ", " es ",
+        " son ", " está ", " desde ", " también ", " ñ", "á", "é", "í", "ó", "ú",
+    ];
+    let pt_markers = [
+        " que ", " de ", " da ", " do ", " das ", " dos ", " é ", " uma ",
+        " no ", " na ", " nos ", " nas ", " com ", " para ", " ção ",
+        " são ", " também ", "ã", "õ", "ç",
+    ];
+    let en_markers = [
+        " the ", " and ", " of ", " to ", " is ", " are ", " a ", " an ",
+        " for ", " with ", " by ", " on ", " in ", " from ", " that ",
+    ];
+    let count = |markers: &[&str]| -> usize {
+        markers.iter().map(|m| blob.matches(m).count()).sum()
+    };
+    let es = count(&es_markers);
+    let pt = count(&pt_markers);
+    let en = count(&en_markers);
+    // Portuguese needs a clear edge — many tokens overlap with Spanish.
+    if pt > es + 3 && pt > en {
+        "Portuguese (pt-BR)"
+    } else if es > en {
+        "Spanish (es)"
+    } else {
+        "English (en)"
+    }
 }
 
 fn whatsapp_memory_key(msg: &zeroclaw_api::channel::ChannelMessage) -> String {
@@ -962,6 +1083,7 @@ pub async fn run_gateway(
         .route("/pair", post(handle_pair))
         .route("/pair/code", get(handle_pair_code))
         .route("/webhook", post(handle_webhook))
+        .route("/api/orchestrate/dispatch", post(handle_orchestrate_dispatch))
         .route("/whatsapp", get(handle_whatsapp_verify))
         .route("/whatsapp", post(handle_whatsapp_message))
         .route("/linq", post(handle_linq_webhook))
@@ -1035,6 +1157,16 @@ pub async fn run_gateway(
         .route(
             "/api/devices/{id}/token/rotate",
             post(api_pairing::rotate_token),
+        )
+        // ── Workspace artifacts (deliverables browser) ──
+        .route(
+            "/api/files/deliverables",
+            get(files_api::handle_files_deliverables_list)
+                .delete(files_api::handle_files_deliverables_wipe),
+        )
+        .route(
+            "/api/files/deliverables/raw",
+            get(files_api::handle_files_deliverables_read),
         )
         // ── Live Canvas (A2UI) routes ──
         .route("/api/canvas", get(canvas::handle_canvas_list))
@@ -1412,8 +1544,11 @@ async fn run_gateway_chat_with_tools(
     session_id: Option<&str>,
 ) -> anyhow::Result<String> {
     let config = state.config.lock().clone();
-    Box::pin(zeroclaw_runtime::agent::process_message(
-        config, message, session_id,
+    Box::pin(zeroclaw_runtime::agent::process_message_with_observer(
+        config,
+        message,
+        session_id,
+        state.observer.clone(),
     ))
     .await
 }
@@ -1422,6 +1557,87 @@ async fn run_gateway_chat_with_tools(
 #[derive(serde::Deserialize)]
 pub struct WebhookBody {
     pub message: String,
+}
+
+/// Keyword scan that pre-classifies an incoming message as COUNCIL stakes.
+///
+/// Conversational dispatcher models (gpt-5-mini, mimo) sometimes ignore the
+/// orchestrator system_prompt's COUNCIL routing rule and try to handle a
+/// material decision themselves. This function gives the gateway a
+/// deterministic first-pass: when ANY of these keywords / phrases appears
+/// in the operator's message, return the matched keyword so the caller can
+/// inject a forcing instruction.
+///
+/// Operator override: header `X-Octopus-Force-Solo: 1` skips this check
+/// entirely (handled at the call site).
+fn classify_stakes_keywords(message: &str) -> Option<&'static str> {
+    // Lowercase scan so we don't trip on case. Keywords cover the explicit
+    // signals: board engagement, M&A, fundraise, valuation, pivot,
+    // regulatory escalation, and large-dollar amounts.
+    let lower = message.to_lowercase();
+    const COUNCIL_KEYWORDS: &[&str] = &[
+        "board",            // "va al board", "board memo", "board meeting"
+        "directorio",       // ES/PT equivalents
+        "conselho",
+        "fundraise",
+        "ronda",            // "ronda seed", "Series A"
+        "series a",
+        "series b",
+        "series c",
+        "valuation",
+        "valoración",
+        "valoracion",
+        "valorar la empresa",
+        "m&a",
+        "merger",
+        "acquisition",
+        "pivot",
+        "term sheet",
+        "due diligence",
+        "regulatory",
+        "regulación",
+        "regulacion",
+        "ipo",
+        "force_council",    // explicit operator opt-in
+    ];
+    for kw in COUNCIL_KEYWORDS {
+        if lower.contains(kw) {
+            return Some(kw);
+        }
+    }
+    // Cheap "large dollar" heuristic without pulling in the regex crate:
+    // walk for `$` followed by digits + (K|M|millones|million). A request
+    // mentioning $100K+ is almost always COUNCIL territory.
+    let bytes = lower.as_bytes();
+    for (i, b) in bytes.iter().enumerate() {
+        if *b != b'$' {
+            continue;
+        }
+        let rest = &lower[i + 1..];
+        let mut digits = String::new();
+        for c in rest.chars().take_while(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | ' ')) {
+            if c.is_ascii_digit() || c == '.' || c == ',' {
+                digits.push(c);
+            }
+        }
+        if digits.is_empty() {
+            continue;
+        }
+        let num: f64 = digits.replace(',', ".").parse().unwrap_or(0.0);
+        let after = rest
+            .trim_start_matches(|c: char| c.is_ascii_digit() || matches!(c, '.' | ',' | ' '));
+        let usd = if after.starts_with('m') || after.starts_with("millones") || after.starts_with("million") {
+            num * 1_000_000.0
+        } else if after.starts_with('k') {
+            num * 1_000.0
+        } else {
+            num
+        };
+        if usd >= 100_000.0 {
+            return Some("dollar-amount-100K+");
+        }
+    }
+    None
 }
 
 /// POST /webhook — main webhook endpoint
@@ -1514,7 +1730,65 @@ async fn handle_webhook(
         return (StatusCode::OK, Json(body));
     }
 
-    let message = &webhook_body.message;
+    // Multi-tenant: when the dashboard sends the X-Octopus-Tenant
+    // header (every API call from web/src/lib/api.ts does this for
+    // the active tenant), inject the tenant's identity / mission /
+    // description / activities as a structured preamble so the LLM
+    // knows which company it's reasoning about. Falls through cleanly
+    // when no tenant is selected or the id is unknown.
+    let tenant_id_for_scope: Option<String> = headers
+        .get("x-octopus-tenant")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let tenant_preamble = tenant_id_for_scope
+        .as_deref()
+        .and_then(|tid| state.tenants.get(tid))
+        .map(|t| format_tenant_preamble(&t));
+
+    // Stakes pre-router. Conversational dispatchers (gpt-5-mini, etc.)
+    // sometimes ignore the orchestrator system_prompt's COUNCIL rule and
+    // try to answer COUNCIL-stake questions themselves. We pre-classify
+    // by keyword scan; when we detect a material decision signal AND the
+    // operator hasn't set `X-Octopus-Force-Solo: 1`, prepend a forcing
+    // instruction at the top of the message so even a conversational
+    // dispatcher delegates to `orchestrator_deep`.
+    let force_solo = headers
+        .get("x-octopus-force-solo")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| matches!(v.trim(), "1" | "true" | "yes"))
+        .unwrap_or(false);
+    let stakes_keyword = if force_solo {
+        None
+    } else {
+        classify_stakes_keywords(&webhook_body.message)
+    };
+    let stakes_preamble = stakes_keyword.map(|kw| format!(
+        "[ROUTER OVERRIDE — gateway pre-classified this as COUNCIL stakes \
+         (keyword match: \"{kw}\"). MANDATORY first action: ONE call to \
+         `delegate` with: agent=\"orchestrator_deep\", \
+         prompt=<operator's full original message below>, \
+         background=true (NOT false — sync would block this webhook past \
+         the curl timeout). Do not call delegate twice. Do not call it \
+         in parallel-mode. After the call returns the task_id, forward \
+         that task_id to the operator with one line: \"Council orchestration \
+         dispatched (task_id: …). Poll via `delegate action=check_result \
+         task_id=…` from the dashboard or another webhook.\" Then end \
+         your turn. Operator can bypass this router with header \
+         X-Octopus-Force-Solo: 1.]\n\n"
+    ));
+
+    let composed_message = match (stakes_preamble.as_deref(), tenant_preamble.as_deref()) {
+        (Some(stakes), Some(preamble)) => format!(
+            "{stakes}{preamble}\n\n— Operator request —\n{}",
+            webhook_body.message
+        ),
+        (Some(stakes), None) => format!("{stakes}{}", webhook_body.message),
+        (None, Some(preamble)) => format!("{preamble}\n\n— Operator request —\n{}", webhook_body.message),
+        (None, None) => webhook_body.message.clone(),
+    };
+    let message: &str = &composed_message;
     let session_id = webhook_session_id(&headers);
 
     if state.auto_save && !zeroclaw_memory::should_skip_autosave_content(message) {
@@ -1554,16 +1828,30 @@ async fn handle_webhook(
         },
     );
 
-    match run_gateway_chat_simple(&state, message).await {
-        Ok(chat_response) => {
+    // FULL agent loop with tools (incl. delegate) so the bench can
+    // actually act — sub-agents launch from delegate() calls, their
+    // tool_call_start / agent_start events broadcast through the
+    // gateway observer to SSE, and the dashboard constellation lights
+    // up. Previously this path used `run_gateway_chat_simple` (single
+    // LLM call, no tools) which is why the orchestrator UI never saw
+    // any movement.
+    // Scope ACTIVE_TENANT so tools downstream (deliverable_write,
+    // entity_upsert, kpi_record, decision_log, delegate's per-tenant
+    // agent gate) all resolve paths under the right company. Without
+    // this scope the tenant header only sets the preamble but the
+    // task-local stays None, and the runtime treats the request as
+    // global / unscoped. Mirrors the WebSocket and dashboard paths.
+    match Box::pin(zeroclaw_memory::qdrant::ACTIVE_TENANT.scope(
+        tenant_id_for_scope.clone(),
+        run_gateway_chat_with_tools(&state, message, session_id.as_deref()),
+    ))
+    .await
+    {
+        Ok(response_text) => {
             let duration = started_at.elapsed();
-            let input_tokens = chat_response.usage.as_ref().and_then(|u| u.input_tokens);
-            let output_tokens = chat_response.usage.as_ref().and_then(|u| u.output_tokens);
-            let tokens_used = input_tokens
-                .zip(output_tokens)
-                .map(|(i, o)| i + o)
-                .or(input_tokens)
-                .or(output_tokens);
+            // The agent loop emits its own LlmResponse / AgentEnd events
+            // for each sub-step. We only emit a coarse end-of-webhook
+            // event so the dashboard knows the top-level request closed.
             state.observer.record_event(
                 &zeroclaw_runtime::observability::ObserverEvent::LlmResponse {
                     provider: provider_label.clone(),
@@ -1571,8 +1859,8 @@ async fn handle_webhook(
                     duration,
                     success: true,
                     error_message: None,
-                    input_tokens,
-                    output_tokens,
+                    input_tokens: None,
+                    output_tokens: None,
                 },
             );
             state.observer.record_metric(
@@ -1583,13 +1871,12 @@ async fn handle_webhook(
                     provider: provider_label,
                     model: model_label,
                     duration,
-                    tokens_used,
+                    tokens_used: None,
                     cost_usd: None,
                 },
             );
 
-            let response = chat_response.text.unwrap_or_default();
-            let body = serde_json::json!({"response": response, "model": state.model});
+            let body = serde_json::json!({"response": response_text, "model": state.model});
             (StatusCode::OK, Json(body))
         }
         Err(e) => {
@@ -1695,6 +1982,140 @@ pub fn verify_whatsapp_signature(app_secret: &str, body: &[u8], signature_header
 
     // Constant-time comparison
     mac.verify_slice(&expected).is_ok()
+}
+
+#[derive(serde::Deserialize)]
+pub struct OrchestrateDispatchBody {
+    pub message: String,
+    /// Optional: name of a configured [agents.X] preset. When set,
+    /// the message is sent DIRECTLY to that agent's sub-loop, with
+    /// its own system_prompt + allowed_tools + model — no parent
+    /// orchestrator LLM in the way. This is the path the dashboard
+    /// QUICK ACTIONS use, because the parent LLM unreliably retries
+    /// `delegate(agent=X)` and trips the circuit breaker.
+    #[serde(default)]
+    pub agent: Option<String>,
+}
+
+/// POST /api/orchestrate/dispatch — fire an agent loop in the
+/// background and return `202 Accepted` immediately. Used by the
+/// dashboard's QUICK ACTIONS panel to fan out N parallel sprints
+/// without hitting the synchronous /webhook timeout.
+///
+/// SSE events stream normally via state.observer (same broadcast
+/// channel /api/events listens to) so the constellation animates
+/// while the spawned task is doing its work.
+async fn handle_orchestrate_dispatch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<OrchestrateDispatchBody>, axum::extract::rejection::JsonRejection>,
+) -> impl IntoResponse {
+    if state.pairing.require_pairing() {
+        let auth = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let token = auth.strip_prefix("Bearer ").unwrap_or("");
+        if !state.pairing.is_authenticated(token) {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "Unauthorized"})),
+            );
+        }
+    }
+
+    let Json(body) = match body {
+        Ok(b) => b,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("bad body: {e}")})),
+            );
+        }
+    };
+
+    // Resolve the active tenant once: both for the prompt preamble
+    // and for the task-local scope that propagates to deliverable_write
+    // (path goes under companies/<tenant>/) and Qdrant (memory scoped
+    // by tenant_id payload).
+    let tenant_id_for_scope: Option<String> = headers
+        .get("x-octopus-tenant")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let tenant_preamble = tenant_id_for_scope
+        .as_deref()
+        .and_then(|tid| state.tenants.get(tid))
+        .map(|t| format_tenant_preamble(&t));
+    let composed_message = match tenant_preamble.as_deref() {
+        Some(preamble) => format!("{preamble}\n\n— Operator request —\n{}", body.message),
+        None => body.message.clone(),
+    };
+    let session_id = webhook_session_id(&headers);
+    let task_id = format!("orch_{}", Uuid::new_v4());
+
+    // Spawn the agent loop in the background. The observer + SSE bus
+    // already broadcast tool_call / agent events from inside, so the
+    // dashboard sees the work without holding this HTTP request open.
+    // The ACTIVE_TENANT task_local scope is what isolates deliverables
+    // and memory per-tenant — without it, every company writes into
+    // the same shared workspace folder.
+    let state_for_task = state.clone();
+    let task_id_log = task_id.clone();
+    let session_id_for_task = session_id.clone();
+    let tenant_scope = tenant_id_for_scope.clone();
+    let agent_target = body.agent.clone();
+    tokio::spawn(async move {
+        zeroclaw_memory::qdrant::ACTIVE_TENANT
+            .scope(tenant_scope, async move {
+                let config = state_for_task.config.lock().clone();
+                let observer = state_for_task.observer.clone();
+
+                let result = if let Some(name) = agent_target.as_deref() {
+                    // DIRECT-AGENT path: bypass the parent orchestrator
+                    // and run THIS agent's preset (its model + system
+                    // prompt + allowed_tools) against the brief. No
+                    // circuit-breaker, no retry loops, no LLM trying
+                    // to figure out whether to call delegate.
+                    Box::pin(zeroclaw_runtime::agent::run_named_agent(
+                        config,
+                        name,
+                        &composed_message,
+                        observer.clone(),
+                    ))
+                    .await
+                } else {
+                    Box::pin(
+                        zeroclaw_runtime::agent::process_message_with_observer(
+                            config,
+                            &composed_message,
+                            session_id_for_task.as_deref(),
+                            observer.clone(),
+                        ),
+                    )
+                    .await
+                };
+                match result {
+                    Ok(_) => {
+                        tracing::info!(task_id = %task_id_log, "orchestrate.dispatch: agent loop completed");
+                    }
+                    Err(e) => {
+                        tracing::warn!(task_id = %task_id_log, error = %e, "orchestrate.dispatch: agent loop failed");
+                    }
+                }
+            })
+            .await;
+    });
+
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "task_id": task_id,
+            "status": "accepted",
+            "session_id": session_id,
+        })),
+    )
 }
 
 /// POST /whatsapp — incoming message webhook

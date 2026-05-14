@@ -544,6 +544,7 @@ impl SqliteMemory {
                     importance: row.get(7)?,
                     superseded_by: row.get(8)?,
                     agent_id: None,
+                tier: None,
                 })
             })?;
 
@@ -748,6 +749,7 @@ impl Memory for SqliteMemory {
                             importance: imp,
                             superseded_by: sup,
                             agent_id: None,
+                        tier: None,
                         };
                         if let Some(filter_sid) = session_ref
                             && entry.session_id.as_deref() != Some(filter_sid) {
@@ -820,6 +822,7 @@ impl Memory for SqliteMemory {
                             importance: row.get(7)?,
                             superseded_by: row.get(8)?,
                             agent_id: None,
+                        tier: None,
                         })
                     })?;
                     for row in rows {
@@ -862,6 +865,7 @@ impl Memory for SqliteMemory {
                     importance: row.get(7)?,
                     superseded_by: row.get(8)?,
                     agent_id: None,
+                tier: None,
                 })
             })?;
 
@@ -902,6 +906,7 @@ impl Memory for SqliteMemory {
                     importance: row.get(7)?,
                     superseded_by: row.get(8)?,
                     agent_id: None,
+                tier: None,
                 })
             };
 
@@ -1061,6 +1066,7 @@ impl Memory for SqliteMemory {
                     importance: row.get(7)?,
                     superseded_by: row.get(8)?,
                     agent_id: None,
+                tier: None,
                 })
             })?;
 

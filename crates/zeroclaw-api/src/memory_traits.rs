@@ -52,6 +52,82 @@ pub struct MemoryEntry {
     /// written outside an `ACTIVE_AGENT.scope(...)` block.
     #[serde(default)]
     pub agent_id: Option<String>,
+    /// Lifecycle tier — drives decay policy and cross-tenant scope.
+    /// `None` is treated as `Fact` (the legacy default).
+    #[serde(default)]
+    pub tier: Option<MemoryTier>,
+}
+
+/// Lifecycle tier for a memory entry. Wired into the decay engine
+/// (`zeroclaw-memory`): frameworks never decay; patterns decay slowly;
+/// facts use the standard age-based curve; ephemeral entries live for
+/// the duration of a single session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryTier {
+    /// Cross-tenant, never decays. Curated frameworks, canonical
+    /// definitions, regulatory text. Importance defaults to 0.95.
+    Framework,
+    /// Cross-tenant, slow decay (~180 days). Generalisable patterns
+    /// learned from prior sessions: "this kind of growth experiment
+    /// works for these conditions". Importance defaults to 0.7.
+    Pattern,
+    /// Per-tenant, normal decay (~90 days). Specific facts about
+    /// customers / deals / vendors / KPIs. Importance defaults to 0.5.
+    Fact,
+    /// Session-bounded; pruned at session end. Scratchpads, working
+    /// hypotheses, in-flight reasoning. Importance defaults to 0.2.
+    Ephemeral,
+}
+
+impl MemoryTier {
+    /// Importance prior used by the recall scorer when no explicit
+    /// `importance` is set on the entry.
+    pub fn default_importance(&self) -> f64 {
+        match self {
+            Self::Framework => 0.95,
+            Self::Pattern => 0.70,
+            Self::Fact => 0.50,
+            Self::Ephemeral => 0.20,
+        }
+    }
+
+    /// Decay half-life in days. `None` means no decay (frameworks).
+    pub fn decay_half_life_days(&self) -> Option<u32> {
+        match self {
+            Self::Framework => None,
+            Self::Pattern => Some(180),
+            Self::Fact => Some(90),
+            Self::Ephemeral => Some(0),
+        }
+    }
+}
+
+impl serde::Serialize for MemoryTier {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(match self {
+            Self::Framework => "framework",
+            Self::Pattern => "pattern",
+            Self::Fact => "fact",
+            Self::Ephemeral => "ephemeral",
+        })
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for MemoryTier {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            "framework" => Self::Framework,
+            "pattern" => Self::Pattern,
+            "fact" => Self::Fact,
+            "ephemeral" => Self::Ephemeral,
+            other => {
+                return Err(serde::de::Error::custom(format!(
+                    "unknown MemoryTier '{other}'; expected framework / pattern / fact / ephemeral"
+                )));
+            }
+        })
+    }
 }
 
 fn default_namespace() -> String {

@@ -4652,7 +4652,16 @@ pub fn build_runtime_proxy_client_with_timeouts(
 
     let builder = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
-        .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs));
+        .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs))
+        // `timeout()` is the end-to-end deadline, but for streaming
+        // providers (OpenRouter SSE, Anthropic streaming) it only
+        // covers up to the response headers — after that the body
+        // stream can stall indefinitely. `read_timeout` applies per
+        // network read, so a stuck stream now aborts after the same
+        // bound. Without this the daemon orchestrator can wedge for
+        // tens of minutes on a single LLM call (`runtime-trace.jsonl`
+        // turn `ec6c92dd` was 26+ min on a `timeout_secs=300` config).
+        .read_timeout(std::time::Duration::from_secs(timeout_secs));
     let builder = apply_runtime_proxy_to_builder(builder, service_key);
     let client = builder.build().unwrap_or_else(|error| {
         tracing::warn!(

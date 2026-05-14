@@ -61,6 +61,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 parking_lot = "0.12"
 toml = "1.0"
+base64 = "0.22"
 tracing = { version = "0.1", default-features = false }
 rustls-pemfile = "2"
 uuid = { version = "1.22", default-features = false, features = ["v4", "std"] }

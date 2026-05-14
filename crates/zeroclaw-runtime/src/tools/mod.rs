@@ -53,10 +53,14 @@ pub use zeroclaw_tools::cli_discovery::{DiscoveredCli, discover_cli_tools};
 pub use zeroclaw_tools::cloud_ops::CloudOpsTool;
 pub use zeroclaw_tools::cloud_patterns::CloudPatternsTool;
 pub use zeroclaw_tools::codex_cli::CodexCliTool;
+pub use zeroclaw_tools::company_manifest::CompanyManifestTool;
 pub use zeroclaw_tools::composio::ComposioTool;
 pub use zeroclaw_tools::content_search::ContentSearchTool;
 pub use zeroclaw_tools::data_management::DataManagementTool;
+pub use zeroclaw_tools::decision_log::DecisionLogTool;
+pub use zeroclaw_tools::deliverable_write::DeliverableWriteTool;
 pub use zeroclaw_tools::discord_search::DiscordSearchTool;
+pub use zeroclaw_tools::entity_upsert::EntityUpsertTool;
 pub use zeroclaw_tools::escalate::EscalateToHumanTool;
 pub use zeroclaw_tools::file_edit::FileEditTool;
 pub use zeroclaw_tools::file_write::FileWriteTool;
@@ -64,6 +68,7 @@ pub use zeroclaw_tools::gemini_cli::GeminiCliTool;
 pub use zeroclaw_tools::git_operations::GitOperationsTool;
 pub use zeroclaw_tools::glob_search::GlobSearchTool;
 pub use zeroclaw_tools::google_workspace::GoogleWorkspaceTool;
+pub use zeroclaw_tools::graphify::GraphifyTool;
 pub use zeroclaw_tools::hardware_board_info::HardwareBoardInfoTool;
 pub use zeroclaw_tools::hardware_memory_map::HardwareMemoryMapTool;
 pub use zeroclaw_tools::hardware_memory_read::HardwareMemoryReadTool;
@@ -72,6 +77,7 @@ pub use zeroclaw_tools::image_gen::ImageGenTool;
 pub use zeroclaw_tools::image_info::ImageInfoTool;
 pub use zeroclaw_tools::jira_tool::JiraTool;
 pub use zeroclaw_tools::knowledge_tool::KnowledgeTool;
+pub use zeroclaw_tools::kpi_record::KpiRecordTool;
 pub use zeroclaw_tools::linkedin::LinkedInTool;
 pub use zeroclaw_tools::llm_task::LlmTaskTool;
 pub use zeroclaw_tools::mcp_client::McpRegistry;
@@ -121,7 +127,7 @@ pub use cron_remove::CronRemoveTool;
 pub use cron_run::CronRunTool;
 pub use cron_runs::CronRunsTool;
 pub use cron_update::CronUpdateTool;
-pub use delegate::DelegateTool;
+pub use delegate::{DelegateTool, recover_orphaned_delegate_results};
 pub use file_read::FileReadTool;
 pub use model_switch::ModelSwitchTool;
 pub use read_skill::ReadSkillTool;
@@ -672,6 +678,30 @@ pub fn all_tools_with_runtime(
     // Vision tools are always available
     tool_arcs.push(Arc::new(ScreenshotTool::new(security.clone())));
     tool_arcs.push(Arc::new(ImageInfoTool::new(security.clone())));
+
+    // Graphify CLI wrapper — turns a folder of code/docs/papers into a
+    // queryable knowledge graph. Sandboxed subprocess; requires the
+    // `graphify` binary on PATH (pip install graphifyy).
+    tool_arcs.push(Arc::new(GraphifyTool::new(security.clone())));
+
+    // Company manifest — single source of truth for the entity the
+    // orchestrator is building. Read by every advisor preset; written
+    // by the orchestrator + strategy agents.
+    tool_arcs.push(Arc::new(CompanyManifestTool::new(security.clone())));
+
+    // Deliverable writer — constrained file_write that lands artefacts
+    // under workspace/deliverables/<agent>/<date>-<slug>/. Granted to
+    // advisor presets that should not have free file_write.
+    tool_arcs.push(Arc::new(DeliverableWriteTool::new(security.clone())));
+
+    // Business memory stack — entity store, KPI log, decision register.
+    // Multi-tenant aware (paths under companies/<tenant>/business/ when
+    // a tenant is scoped). The orchestrator and advisor presets use
+    // these in lieu of free file_write for any persistent business
+    // state (customers, deals, KPIs, strategic decisions).
+    tool_arcs.push(Arc::new(EntityUpsertTool::new(security.clone())));
+    tool_arcs.push(Arc::new(KpiRecordTool::new(security.clone())));
+    tool_arcs.push(Arc::new(DecisionLogTool::new(security.clone())));
 
     // Session-to-session messaging tools (always available when sessions dir exists)
     if let Ok(session_store) = zeroclaw_infra::session_store::SessionStore::new(workspace_dir) {

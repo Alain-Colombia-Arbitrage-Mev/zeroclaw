@@ -49,9 +49,20 @@ pub struct StdioTransport {
 
 impl StdioTransport {
     pub fn new(config: &McpServerConfig) -> Result<Self> {
+        // Expand `${VAR}` references inside env values so the
+        // operator can keep API keys in `~/.zeroclaw/.env.local`
+        // and reference them as `env = { API_KEY = "${21st}" }`
+        // in config.toml. Unresolved vars are left literal so the
+        // child can decide whether the absence is an error.
+        let resolved_env: std::collections::HashMap<String, String> = config
+            .env
+            .iter()
+            .map(|(k, v)| (k.clone(), expand_env_refs(v)))
+            .collect();
+
         let mut child = Command::new(&config.command)
             .args(&config.args)
-            .envs(&config.env)
+            .envs(&resolved_env)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit())
@@ -918,11 +929,81 @@ pub fn create_transport(config: &McpServerConfig) -> Result<Box<dyn McpTransport
     }
 }
 
+// ── Env-var interpolation ────────────────────────────────────────────────
+//
+// Resolve `${VAR}` references inside MCP server env values against
+// the daemon's process env. Unrecognised refs are left literal so
+// the spawned child can choose whether the absence is fatal.
+//
+// Supported syntax: `${VAR_NAME}` only. `$VAR` (no braces) is NOT
+// expanded — too easy to collide with literal `$` in URLs / paths.
+// Inside the braces, any character is allowed except `}` itself,
+// so keys like `${21st}` (digit-leading, allowed by setenv) work.
+
+pub(crate) fn expand_env_refs(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+            if let Some(end_rel) = bytes[i + 2..].iter().position(|&b| b == b'}') {
+                let key = &input[i + 2..i + 2 + end_rel];
+                match std::env::var(key) {
+                    Ok(value) => out.push_str(&value),
+                    Err(_) => out.push_str(&input[i..i + 3 + end_rel]),
+                }
+                i += 3 + end_rel;
+                continue;
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expand_env_refs_resolves_braced_var() {
+        // Use a unique name to avoid clashes if tests run in parallel.
+        let key = "ZEROCLAW_TEST_MCP_EXPAND_KEY";
+        // SAFETY: scoped, distinctive name; no other test reads it.
+        unsafe { std::env::set_var(key, "resolved-value") };
+        let out = expand_env_refs(&format!("prefix-${{{key}}}-suffix"));
+        unsafe { std::env::remove_var(key) };
+        assert_eq!(out, "prefix-resolved-value-suffix");
+    }
+
+    #[test]
+    fn expand_env_refs_leaves_unresolved_literal() {
+        // A var that almost certainly doesn't exist.
+        let out = expand_env_refs("${ZEROCLAW_NEVER_SET_NOT_A_REAL_VAR}");
+        assert_eq!(out, "${ZEROCLAW_NEVER_SET_NOT_A_REAL_VAR}");
+    }
+
+    #[test]
+    fn expand_env_refs_supports_digit_leading_keys() {
+        let key = "21st";
+        // SAFETY: this is the actual user-requested key shape; setenv
+        // accepts it on every supported platform — it's only shells
+        // that refuse to surface vars whose names start with a digit.
+        unsafe { std::env::set_var(key, "sk-magic-21st-key") };
+        let out = expand_env_refs("API_KEY=${21st}");
+        unsafe { std::env::remove_var(key) };
+        assert_eq!(out, "API_KEY=sk-magic-21st-key");
+    }
+
+    #[test]
+    fn expand_env_refs_passthrough_when_no_refs() {
+        assert_eq!(expand_env_refs("plain-string"), "plain-string");
+        assert_eq!(expand_env_refs(""), "");
+        assert_eq!(expand_env_refs("$NOT_BRACED"), "$NOT_BRACED");
+    }
 
     #[test]
     fn test_transport_default_is_stdio() {

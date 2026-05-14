@@ -300,6 +300,139 @@ impl DelegateTool {
         }
         Ok(())
     }
+
+    /// Check whether `agent_name` is enabled for the currently scoped
+    /// tenant. Reads `companies/<tenant>/agents.toml`; when missing or
+    /// the file lists no `active_agents`, returns `Ok(())` — the global
+    /// agent set is allowed (legacy behavior).
+    ///
+    /// When the file exists AND `active_agents` is non-empty AND
+    /// `agent_name` is NOT in the list, returns an error string with a
+    /// hint pointing the operator at the overlay file.
+    fn check_tenant_agent_enabled(&self, agent_name: &str) -> Result<(), String> {
+        let tenant = zeroclaw_memory::qdrant::ACTIVE_TENANT
+            .try_with(|t| t.clone())
+            .ok()
+            .flatten()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        tracing::info!(
+            agent = agent_name,
+            tenant = ?tenant,
+            workspace = %self.workspace_dir.display(),
+            "tenant-agent-gate: check entry"
+        );
+        let Some(tenant) = tenant else {
+            return Ok(());
+        };
+        let overlay_path = self
+            .workspace_dir
+            .join("companies")
+            .join(&tenant)
+            .join("agents.toml");
+        if !overlay_path.exists() {
+            return Ok(());
+        }
+        let raw = match std::fs::read_to_string(&overlay_path) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    tenant = %tenant,
+                    "Failed to read agents.toml overlay: {e}; allowing delegation"
+                );
+                return Ok(());
+            }
+        };
+        let parsed: toml::Value = match toml::from_str(&raw) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    tenant = %tenant,
+                    "Failed to parse agents.toml overlay: {e}; allowing delegation"
+                );
+                return Ok(());
+            }
+        };
+        let active = parsed
+            .get("active_agents")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            });
+        let Some(active) = active else {
+            // `active_agents` absent — overlay is just for per-agent
+            // overrides; don't gate.
+            return Ok(());
+        };
+        if active.is_empty() {
+            return Ok(());
+        }
+        if active.iter().any(|a| a == agent_name) {
+            Ok(())
+        } else {
+            Err(format!(
+                "Agent '{agent_name}' is not enabled for tenant '{tenant}'. \
+                 Active pack: see companies/{tenant}/agents.toml. \
+                 To enable, add '{agent_name}' to `active_agents` in that file."
+            ))
+        }
+    }
+}
+
+/// Scan `workspace/delegate_results/` and mark any entry still in
+/// `running` status as `failed("orphaned at startup")`. Background
+/// delegations run as tokio tasks inside the parent process; when the
+/// parent exits before they finish, the JSON result file is stuck in
+/// `running` forever. Run this at daemon (and CLI) startup so a fresh
+/// process inherits a consistent view.
+///
+/// Returns `(scanned, recovered)`. Uses blocking `std::fs` because it
+/// runs once at startup and the result directory is tiny.
+pub fn recover_orphaned_delegate_results(workspace_dir: &Path) -> (usize, usize) {
+    let dir = workspace_dir.join("delegate_results");
+    let read = match std::fs::read_dir(&dir) {
+        Ok(r) => r,
+        Err(_) => return (0, 0), // dir missing on first boot — not an error
+    };
+
+    let mut scanned = 0usize;
+    let mut recovered = 0usize;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        scanned += 1;
+        let raw = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let mut result: BackgroundDelegateResult = match serde_json::from_slice(&raw) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if result.status != BackgroundTaskStatus::Running {
+            continue;
+        }
+        result.status = BackgroundTaskStatus::Failed;
+        result.error = Some(
+            "Orphaned: parent process exited before the sub-agent finished. \
+             Re-delegate to retry."
+                .to_string(),
+        );
+        result.finished_at = Some(now.clone());
+        if let Ok(bytes) = serde_json::to_vec_pretty(&result) {
+            if std::fs::write(&path, bytes).is_ok() {
+                recovered += 1;
+            }
+        }
+    }
+
+    (scanned, recovered)
 }
 
 #[async_trait]
@@ -399,8 +532,25 @@ impl Tool for DelegateTool {
         }
 
         // --- Parallel mode ---
+        // Treat empty `parallel: []` and `parallel: [""]` as if the
+        // caller didn't pass it. Conversational dispatcher LLMs (gpt-5,
+        // gpt-5-mini) routinely include the optional field with an
+        // empty value; bouncing that as an error sends the model into a
+        // retry loop.
         if let Some(parallel_agents) = args.get("parallel").and_then(|v| v.as_array()) {
-            return self.execute_parallel(parallel_agents, &args).await;
+            let non_empty: Vec<&serde_json::Value> = parallel_agents
+                .iter()
+                .filter(|v| {
+                    v.as_str()
+                        .map(|s| !s.trim().is_empty())
+                        .unwrap_or_else(|| !v.is_null())
+                })
+                .collect();
+            if !non_empty.is_empty() {
+                let owned: Vec<serde_json::Value> = non_empty.into_iter().cloned().collect();
+                return self.execute_parallel(&owned, &args).await;
+            }
+            // else: fall through to single-agent dispatch below
         }
 
         // --- Single-agent delegation (synchronous or background) ---
@@ -429,6 +579,17 @@ impl Tool for DelegateTool {
                 success: false,
                 output: String::new(),
                 error: Some("'prompt' parameter must not be empty".into()),
+            });
+        }
+
+        // Per-tenant agent gate. If `companies/<tenant>/agents.toml`
+        // declares `active_agents` and this agent isn't in the list,
+        // refuse with a hint pointing the operator at the overlay file.
+        if let Err(msg) = self.check_tenant_agent_enabled(agent_name) {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(msg),
             });
         }
 

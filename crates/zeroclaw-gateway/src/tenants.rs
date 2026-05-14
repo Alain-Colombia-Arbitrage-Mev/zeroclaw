@@ -27,6 +27,16 @@ pub enum TenantCategory {
     Hardware,
     Media,
     Ai,
+    /// Clean / renewable energy ventures: solar, wind, storage,
+    /// transmission, EV charging, V2G, virtual power plants. Drives
+    /// the energy_grid_strategist + esg_energy_counsel +
+    /// geospatial_analyst + deeptech_financier bench.
+    Energy,
+    /// Nonprofit / NGO / asociación civil / fundación structures
+    /// (incl. mission-driven solar, social impact, philanthropy).
+    /// Drives ngo_architect + latam_solar_ngo_counsel +
+    /// sovereign_advisor.
+    Nonprofit,
     Other,
 }
 
@@ -85,6 +95,22 @@ impl TenantCategory {
                 "risk_analyst", "legal_compliance", "ceo_advisor",
                 "coder", "tester", "security",
             ],
+            TenantCategory::Energy => &[
+                "energy_grid_strategist", "esg_energy_counsel",
+                "geospatial_analyst", "deeptech_financier",
+                "risk_analyst", "legal_compliance",
+                "finance_controller", "cfo_advisor", "ceo_advisor",
+                "business_developer", "sovereign_advisor",
+                "market_researcher", "data_analyst", "forensic_auditor",
+            ],
+            TenantCategory::Nonprofit => &[
+                "ngo_architect", "latam_solar_ngo_counsel",
+                "esg_energy_counsel", "sovereign_advisor",
+                "legal_compliance", "finance_controller",
+                "ceo_advisor", "marketing", "content_creator",
+                "data_analyst", "geospatial_analyst",
+                "energy_grid_strategist",
+            ],
             TenantCategory::Other => &[
                 "idea_generator", "idea_validator", "customer_researcher",
                 "competitor_analyst", "red_teamer", "pivot_strategist",
@@ -103,6 +129,8 @@ impl TenantCategory {
             TenantCategory::Hardware => "Hardware",
             TenantCategory::Media => "Media",
             TenantCategory::Ai => "AI",
+            TenantCategory::Energy => "Energy",
+            TenantCategory::Nonprofit => "Nonprofit",
             TenantCategory::Other => "Other",
         }
     }
@@ -148,6 +176,87 @@ impl TenantStage {
     }
 }
 
+/// Cross-cutting activities a tenant may engage in *in addition to*
+/// its primary `TenantCategory`. A solar-energy company can simul-
+/// taneously have a nonprofit arm, sell satellite-derived data, and
+/// pitch governments — so these are additive flags, not mutually
+/// exclusive variants. Each activity pulls a focused slice of the
+/// bench on top of the category's recommended set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum TenantActivity {
+    /// NGO / asociación civil / fundación arm — even if the parent
+    /// is a for-profit. Pulls the philanthropic-capital + governance
+    /// counsel.
+    Nonprofit,
+    /// Earth observation / satellite-derived data activity — sensing,
+    /// downstream analytics, MRV, geospatial product. Pulls the EO
+    /// commercial specialist.
+    Satellite,
+    /// Public-sector / sovereign-buyer activity — government
+    /// contracting, sovereign-fund pitches, multilateral procurement.
+    /// Pulls the sovereign + compliance bench.
+    Government,
+    /// Regulated-vertical activity — fintech, health, defence,
+    /// consumer-data, energy. Pulls counsel + risk + security.
+    Regulated,
+    /// Physical hardware activity — manufacturing, deployed devices,
+    /// energy hardware, mobility. Pulls deep-tech finance + system
+    /// architecture.
+    Hardware,
+}
+
+impl TenantActivity {
+    /// Sub-agents this activity adds to the bench, merged on top of
+    /// the category's recommended set.
+    pub fn recommended_agents(self) -> &'static [&'static str] {
+        match self {
+            TenantActivity::Nonprofit => &[
+                "ngo_architect",
+                "latam_solar_ngo_counsel",
+                "esg_energy_counsel",
+                "sovereign_advisor",
+            ],
+            TenantActivity::Satellite => &[
+                "geospatial_analyst",
+                "deeptech_financier",
+                "esg_energy_counsel",
+            ],
+            TenantActivity::Government => &[
+                "sovereign_advisor",
+                "legal_compliance",
+                "security",
+                "fintech_counsel",
+                "risk_analyst",
+            ],
+            TenantActivity::Regulated => &[
+                "legal_compliance",
+                "fintech_counsel",
+                "security",
+                "risk_analyst",
+                "esg_energy_counsel",
+            ],
+            TenantActivity::Hardware => &[
+                "deeptech_financier",
+                "architect",
+                "server_architect",
+                "designer",
+                "market_researcher",
+            ],
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            TenantActivity::Nonprofit => "Nonprofit / NGO",
+            TenantActivity::Satellite => "Satellite / EO",
+            TenantActivity::Government => "Government / Sovereign",
+            TenantActivity::Regulated => "Regulated vertical",
+            TenantActivity::Hardware => "Hardware",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tenant {
     pub id: String,
@@ -158,6 +267,18 @@ pub struct Tenant {
     /// Optional one-line pitch / positioning statement.
     #[serde(default)]
     pub mission: String,
+    /// Long-form description of the company, project, or initiative.
+    /// Distinct from `mission` (which is a one-liner): this can hold
+    /// the elevator pitch, the problem-solution narrative, target
+    /// market, regulatory footprint, geography, etc. Sub-agents read
+    /// it when tasked against this tenant.
+    #[serde(default)]
+    pub description: String,
+    /// Cross-cutting activities that augment the primary category's
+    /// recommended bench. A solar-energy company can be Nonprofit +
+    /// Satellite + Government simultaneously.
+    #[serde(default)]
+    pub activities: Vec<TenantActivity>,
     /// Subset of bench agents the operator wants surfaced first for
     /// this tenant. When empty, the category's recommended set is
     /// used.
@@ -170,6 +291,33 @@ pub struct Tenant {
 
 fn default_stage() -> TenantStage {
     TenantStage::Ideation
+}
+
+impl Tenant {
+    /// Recommended bench for this tenant: category's set merged with
+    /// the union of each active activity's set, dedup-preserving the
+    /// category order so the primary bench reads first. Used by the
+    /// `/api/tenants/{id}` response and the constellation view to
+    /// decide which satellites light up vs dim.
+    pub fn recommended_bench(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .category
+            .recommended_agents()
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        let mut seen: std::collections::HashSet<String> =
+            out.iter().cloned().collect();
+        for activity in &self.activities {
+            for name in activity.recommended_agents() {
+                let s = (*name).to_string();
+                if seen.insert(s.clone()) {
+                    out.push(s);
+                }
+            }
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -263,6 +411,12 @@ impl TenantRegistry {
             if let Some(mission) = patch.mission {
                 entry.mission = mission;
             }
+            if let Some(description) = patch.description {
+                entry.description = description;
+            }
+            if let Some(activities) = patch.activities {
+                entry.activities = activities;
+            }
             if let Some(agents) = patch.agents {
                 entry.agents = agents;
             }
@@ -322,6 +476,8 @@ pub struct TenantPatch {
     pub category: Option<TenantCategory>,
     pub stage: Option<TenantStage>,
     pub mission: Option<String>,
+    pub description: Option<String>,
+    pub activities: Option<Vec<TenantActivity>>,
     pub agents: Option<Vec<String>>,
 }
 
@@ -376,6 +532,8 @@ mod tests {
                 category: TenantCategory::Saas,
                 stage: TenantStage::Validation,
                 mission: "Provisioning DBs".into(),
+                description: String::new(),
+                activities: vec![],
                 agents: vec![],
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -403,6 +561,57 @@ mod tests {
     }
 
     #[test]
+    fn recommended_bench_merges_category_and_activities() {
+        let t = Tenant {
+            id: "x".into(),
+            name: "x".into(),
+            category: TenantCategory::Energy,
+            stage: TenantStage::Ideation,
+            mission: String::new(),
+            description: String::new(),
+            activities: vec![
+                TenantActivity::Nonprofit,
+                TenantActivity::Satellite,
+                TenantActivity::Government,
+            ],
+            agents: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let bench = t.recommended_bench();
+        // Energy primary set must come first
+        assert_eq!(bench[0], "energy_grid_strategist");
+        // Activity adds present
+        assert!(bench.iter().any(|a| a == "ngo_architect"));
+        assert!(bench.iter().any(|a| a == "latam_solar_ngo_counsel"));
+        assert!(bench.iter().any(|a| a == "geospatial_analyst"));
+        assert!(bench.iter().any(|a| a == "sovereign_advisor"));
+        // Dedup: legal_compliance appears in both Energy and Government
+        // — must occur exactly once.
+        let count_legal = bench.iter().filter(|a| *a == "legal_compliance").count();
+        assert_eq!(count_legal, 1);
+    }
+
+    #[test]
+    fn empty_activities_falls_back_to_category_only() {
+        let t = Tenant {
+            id: "x".into(),
+            name: "x".into(),
+            category: TenantCategory::Saas,
+            stage: TenantStage::Ideation,
+            mission: String::new(),
+            description: String::new(),
+            activities: vec![],
+            agents: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let bench = t.recommended_bench();
+        let cat: Vec<&str> = TenantCategory::Saas.recommended_agents().to_vec();
+        assert_eq!(bench.len(), cat.len());
+    }
+
+    #[test]
     fn duplicate_create_rejected() {
         let tmp = tempfile::tempdir().unwrap();
         let reg = TenantRegistry::load(tmp.path());
@@ -412,6 +621,8 @@ mod tests {
             category: TenantCategory::Other,
             stage: TenantStage::Ideation,
             mission: String::new(),
+            description: String::new(),
+            activities: vec![],
             agents: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
