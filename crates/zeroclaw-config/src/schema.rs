@@ -449,6 +449,11 @@ pub struct Config {
     #[nested]
     pub opencode_cli: OpenCodeCliConfig,
 
+    /// SocialClaw publishing tool configuration (`[socialclaw]`).
+    #[serde(default)]
+    #[nested]
+    pub socialclaw: SocialclawConfig,
+
     /// Standard Operating Procedures engine configuration (`[sop]`).
     #[serde(default)]
     #[nested]
@@ -4080,6 +4085,81 @@ impl Default for OpenCodeCliConfig {
             enabled: false,
             timeout_secs: default_opencode_cli_timeout_secs(),
             max_output_bytes: default_opencode_cli_max_output_bytes(),
+            env_passthrough: Vec::new(),
+        }
+    }
+}
+
+// ── SocialClaw ──────────────────────────────────────────────────
+
+/// SocialClaw publishing tool configuration (`[socialclaw]` section).
+///
+/// Wraps the `socialclaw` npm CLI to publish and schedule content across
+/// X, LinkedIn, Instagram, Facebook Pages, TikTok, Discord, Telegram,
+/// YouTube, Reddit, WordPress, and Pinterest. Requires a SocialClaw
+/// workspace with an active plan (`api_key`). The API key is injected as
+/// the `SOCIALCLAW_API_KEY` env var when spawning the subprocess.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "socialclaw"]
+pub struct SocialclawConfig {
+    /// Enable the `socialclaw` tool.
+    #[serde(default)]
+    pub enabled: bool,
+    /// SocialClaw workspace API key. Grab it from the SocialClaw dashboard.
+    /// Stored via the OS keyring when possible; never commit to config.toml.
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// SocialClaw API base URL (override only for self-hosted deployments).
+    #[serde(default = "default_socialclaw_base_url")]
+    pub base_url: String,
+    /// Provider allowlist. Use `["*"]` for any provider supported by your plan.
+    /// Otherwise list explicit provider names ("x", "linkedin", "tiktok", etc.).
+    #[serde(default = "default_socialclaw_allowed_providers")]
+    pub allowed_providers: Vec<String>,
+    /// CLI subcommand allowlist. Empty = a curated safe-default set covering
+    /// the full publishing lifecycle. Set explicitly to tighten the surface.
+    #[serde(default)]
+    pub allowed_commands: Vec<String>,
+    /// Per-call timeout in seconds.
+    #[serde(default = "default_socialclaw_timeout_secs")]
+    pub timeout_secs: u64,
+    /// Maximum captured stdout per call (2 MiB default).
+    #[serde(default = "default_socialclaw_max_output_bytes")]
+    pub max_output_bytes: usize,
+    /// Extra env vars passed through to the socialclaw subprocess.
+    #[serde(default)]
+    pub env_passthrough: Vec<String>,
+}
+
+fn default_socialclaw_base_url() -> String {
+    "https://getsocialclaw.com".into()
+}
+
+fn default_socialclaw_allowed_providers() -> Vec<String> {
+    vec!["*".into()]
+}
+
+fn default_socialclaw_timeout_secs() -> u64 {
+    120
+}
+
+fn default_socialclaw_max_output_bytes() -> usize {
+    2_097_152
+}
+
+impl Default for SocialclawConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_key: None,
+            base_url: default_socialclaw_base_url(),
+            allowed_providers: default_socialclaw_allowed_providers(),
+            allowed_commands: Vec::new(),
+            timeout_secs: default_socialclaw_timeout_secs(),
+            max_output_bytes: default_socialclaw_max_output_bytes(),
             env_passthrough: Vec::new(),
         }
     }
@@ -9379,6 +9459,7 @@ impl Default for Config {
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            socialclaw: SocialclawConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         }
@@ -12069,6 +12150,7 @@ auto_save = true
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            socialclaw: SocialclawConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
@@ -12639,6 +12721,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            socialclaw: SocialclawConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
