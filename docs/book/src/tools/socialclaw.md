@@ -40,14 +40,23 @@ Enforces a hard allowlist for the `--provider`/`-p`/`--provider=<name>` flag in 
 
 ### `allowed_commands`
 
-When empty, a curated default set is used:
+When empty, a curated default set mirrors the real surface of `socialclaw --help`:
 
-- read-only: `accounts list`, `accounts capabilities`, `posts get`, `status`, `analytics post`, `usage`, `workspace health`
-- account/asset management: `accounts connect`, `accounts disconnect`, `assets upload`, `assets delete`
-- publishing: `campaigns preview`, `validate`, `apply`
-- destructive: `posts delete`
+- lifecycle: `validate`, `apply`, `campaigns preview`, `campaigns inspect`, `campaigns clone`, `publish-draft`
+- posts: `posts list`, `posts get`, `posts attempts`, `posts delete`, `posts reconcile`, `delete`, `retry`, `cancel`
+- runs / status: `status`, `runs inspect`
+- accounts: `accounts list`, `accounts capabilities`, `accounts settings`, `accounts actions`, `accounts connect`, `accounts status`, `accounts disconnect`
+- assets: `assets upload`, `assets delete`
+- analytics: `analytics post`, `analytics account`, `analytics run`, `analytics refresh`
+- workspace / health / jobs: `usage`, `workspace health`, `connections health`, `jobs list`
 
-Set the list explicitly to tighten the surface. The CLI invocation form is the multi-word subcommand exactly as `socialclaw` accepts it (`"accounts list"`, `"posts get"`, etc.).
+Intentionally **excluded** from the defaults — add them in `allowed_commands` if you need them:
+
+- `view` — writes formatted output to a file path (path handling left to a follow-up).
+- `accounts action` — executes an arbitrary provider-side action with open semantics.
+- `login`, `install` — local setup commands; not agent capabilities.
+
+Set `allowed_commands` explicitly to tighten the surface. The CLI invocation form is the multi-word subcommand exactly as `socialclaw` accepts it (`"accounts list"`, `"posts get"`, etc.).
 
 ## Invocation
 

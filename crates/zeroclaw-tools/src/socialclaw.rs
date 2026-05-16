@@ -39,24 +39,55 @@ const SAFE_ENV_VARS: &[&str] = &[
 ///
 /// Curated to cover the full publishing lifecycle (validate → preview → apply →
 /// inspect → analytics) plus account/asset management and explicit destructive
-/// operations. Operators who want a tighter surface set `allowed_commands`
-/// explicitly in config.
+/// operations, mirroring the real surface of `socialclaw --help`.
+///
+/// Intentionally excluded — operators can add them explicitly in config when
+/// they need them:
+/// - `view`: writes formatted output to a file path (needs path validation).
+/// - `accounts action`: executes an arbitrary provider-side action (open
+///   semantics — destructive surface is unbounded).
+/// - `login` / `install`: local setup commands, not agent capabilities.
 const DEFAULT_ALLOWED_COMMANDS: &[&str] = &[
-    "accounts list",
-    "accounts capabilities",
-    "accounts connect",
-    "accounts disconnect",
-    "assets upload",
-    "assets delete",
-    "campaigns preview",
+    // Lifecycle
     "validate",
     "apply",
+    "campaigns preview",
+    "campaigns inspect",
+    "campaigns clone",
+    "publish-draft",
+    // Posts
+    "posts list",
     "posts get",
+    "posts attempts",
     "posts delete",
+    "posts reconcile",
+    "delete",
+    "retry",
+    "cancel",
+    // Runs and status
     "status",
+    "runs inspect",
+    // Accounts
+    "accounts list",
+    "accounts capabilities",
+    "accounts settings",
+    "accounts actions",
+    "accounts connect",
+    "accounts status",
+    "accounts disconnect",
+    // Assets
+    "assets upload",
+    "assets delete",
+    // Analytics
     "analytics post",
+    "analytics account",
+    "analytics run",
+    "analytics refresh",
+    // Workspace / health / jobs
     "usage",
     "workspace health",
+    "connections health",
+    "jobs list",
 ];
 
 /// Publishes content via the SocialClaw CLI.
@@ -409,11 +440,43 @@ mod tests {
     #[test]
     fn validate_command_accepts_default_allowlist() {
         let tool = SocialclawTool::new(test_security(AutonomyLevel::Full), test_config());
+        // Originals
         assert!(tool.validate_command("accounts list").is_ok());
         assert!(tool.validate_command("validate").is_ok());
         assert!(tool.validate_command("apply").is_ok());
         assert!(tool.validate_command("posts delete").is_ok());
         assert!(tool.validate_command("workspace health").is_ok());
+        // Expanded surface (matches `socialclaw --help`)
+        assert!(tool.validate_command("campaigns inspect").is_ok());
+        assert!(tool.validate_command("campaigns clone").is_ok());
+        assert!(tool.validate_command("publish-draft").is_ok());
+        assert!(tool.validate_command("posts list").is_ok());
+        assert!(tool.validate_command("posts attempts").is_ok());
+        assert!(tool.validate_command("posts reconcile").is_ok());
+        assert!(tool.validate_command("retry").is_ok());
+        assert!(tool.validate_command("cancel").is_ok());
+        assert!(tool.validate_command("delete").is_ok());
+        assert!(tool.validate_command("runs inspect").is_ok());
+        assert!(tool.validate_command("accounts settings").is_ok());
+        assert!(tool.validate_command("accounts actions").is_ok());
+        assert!(tool.validate_command("accounts status").is_ok());
+        assert!(tool.validate_command("analytics account").is_ok());
+        assert!(tool.validate_command("analytics run").is_ok());
+        assert!(tool.validate_command("analytics refresh").is_ok());
+        assert!(tool.validate_command("connections health").is_ok());
+        assert!(tool.validate_command("jobs list").is_ok());
+    }
+
+    #[test]
+    fn validate_command_still_rejects_excluded_destructive() {
+        // `view` writes to disk and `accounts action` runs arbitrary provider
+        // actions — neither is in the curated defaults. Operators must opt in
+        // via `allowed_commands` explicitly.
+        let tool = SocialclawTool::new(test_security(AutonomyLevel::Full), test_config());
+        assert!(tool.validate_command("view").is_err());
+        assert!(tool.validate_command("accounts action").is_err());
+        assert!(tool.validate_command("login").is_err());
+        assert!(tool.validate_command("install").is_err());
     }
 
     #[test]
