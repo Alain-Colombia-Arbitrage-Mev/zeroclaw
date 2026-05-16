@@ -97,6 +97,7 @@ pub use zeroclaw_tools::proxy_config::ProxyConfigTool;
 pub use zeroclaw_tools::pushover::PushoverTool;
 pub use zeroclaw_tools::reaction::ReactionTool;
 pub use zeroclaw_tools::report_template_tool::ReportTemplateTool;
+pub use zeroclaw_tools::scrapling_cli::ScraplingCliTool;
 pub use zeroclaw_tools::screenshot::ScreenshotTool;
 pub use zeroclaw_tools::sessions::{
     SessionDeleteTool, SessionResetTool, SessionsHistoryTool, SessionsListTool, SessionsSendTool,
@@ -662,6 +663,14 @@ pub fn all_tools_with_runtime(
         tool_arcs.push(Arc::new(OpenCodeCliTool::new(
             security.clone(),
             root_config.opencode_cli.clone(),
+        )));
+    }
+
+    // Scrapling CLI fallback (subprocess-based scraping)
+    if root_config.scrapling_cli.enabled {
+        tool_arcs.push(Arc::new(ScraplingCliTool::new(
+            security.clone(),
+            root_config.scrapling_cli.clone(),
         )));
     }
 

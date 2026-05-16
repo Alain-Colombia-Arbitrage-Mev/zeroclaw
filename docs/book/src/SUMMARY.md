@@ -57,6 +57,7 @@
 - [Overview](./tools/overview.md)
 - [MCP (Model Context Protocol)](./tools/mcp.md)
 - [Browser automation](./tools/browser.md)
+- [Scrapling CLI](./tools/scrapling-cli.md)
 
 # Security
 

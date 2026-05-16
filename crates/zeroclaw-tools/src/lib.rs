@@ -61,6 +61,7 @@ pub mod pushover;
 pub mod reaction;
 pub mod report_template_tool;
 pub mod report_templates;
+pub mod scrapling_cli;
 pub mod screenshot;
 pub mod sessions;
 pub mod swarm;

@@ -449,6 +449,11 @@ pub struct Config {
     #[nested]
     pub opencode_cli: OpenCodeCliConfig,
 
+    /// Scrapling CLI fallback tool configuration (`[scrapling_cli]`).
+    #[serde(default)]
+    #[nested]
+    pub scrapling_cli: ScraplingCliConfig,
+
     /// Standard Operating Procedures engine configuration (`[sop]`).
     #[serde(default)]
     #[nested]
@@ -4080,6 +4085,55 @@ impl Default for OpenCodeCliConfig {
             enabled: false,
             timeout_secs: default_opencode_cli_timeout_secs(),
             max_output_bytes: default_opencode_cli_max_output_bytes(),
+            env_passthrough: Vec::new(),
+        }
+    }
+}
+
+// ── Scrapling CLI ────────────────────────────────────────────────
+
+/// Scrapling CLI fallback tool configuration (`[scrapling_cli]` section).
+///
+/// Wraps `scrapling extract <op> <url> <output>` as a direct subprocess so
+/// agents can scrape pages without running the Scrapling MCP server.
+/// Allowlist-only domains and http(s) only; output is captured into a
+/// workspace-local temp file that is removed after read.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "scrapling-cli"]
+pub struct ScraplingCliConfig {
+    /// Enable the `scrapling_cli` tool.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Domains (or `*`) the agent may scrape. Subdomains are accepted.
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+    /// Per-call timeout in seconds.
+    #[serde(default = "default_scrapling_cli_timeout_secs")]
+    pub timeout_secs: u64,
+    /// Maximum captured content per call (2 MiB default).
+    #[serde(default = "default_scrapling_cli_max_output_bytes")]
+    pub max_output_bytes: usize,
+    /// Extra env vars passed through to the scrapling subprocess.
+    #[serde(default)]
+    pub env_passthrough: Vec<String>,
+}
+
+fn default_scrapling_cli_timeout_secs() -> u64 {
+    180
+}
+
+fn default_scrapling_cli_max_output_bytes() -> usize {
+    2_097_152
+}
+
+impl Default for ScraplingCliConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            allowed_domains: Vec::new(),
+            timeout_secs: default_scrapling_cli_timeout_secs(),
+            max_output_bytes: default_scrapling_cli_max_output_bytes(),
             env_passthrough: Vec::new(),
         }
     }
@@ -9379,6 +9433,7 @@ impl Default for Config {
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            scrapling_cli: ScraplingCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         }
@@ -12069,6 +12124,7 @@ auto_save = true
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            scrapling_cli: ScraplingCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
@@ -12639,6 +12695,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            scrapling_cli: ScraplingCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
