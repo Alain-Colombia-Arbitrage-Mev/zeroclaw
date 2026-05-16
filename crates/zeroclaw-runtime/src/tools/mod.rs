@@ -57,6 +57,7 @@ pub use zeroclaw_tools::composio::ComposioTool;
 pub use zeroclaw_tools::content_search::ContentSearchTool;
 pub use zeroclaw_tools::data_management::DataManagementTool;
 pub use zeroclaw_tools::discord_search::DiscordSearchTool;
+pub use zeroclaw_tools::email::EmailTool;
 pub use zeroclaw_tools::escalate::EscalateToHumanTool;
 pub use zeroclaw_tools::file_edit::FileEditTool;
 pub use zeroclaw_tools::file_write::FileWriteTool;
@@ -662,6 +663,14 @@ pub fn all_tools_with_runtime(
         tool_arcs.push(Arc::new(OpenCodeCliTool::new(
             security.clone(),
             root_config.opencode_cli.clone(),
+        )));
+    }
+
+    // Email (SMTP/IMAP) tool
+    if root_config.email.enabled {
+        tool_arcs.push(Arc::new(EmailTool::new(
+            security.clone(),
+            root_config.email.clone(),
         )));
     }
 

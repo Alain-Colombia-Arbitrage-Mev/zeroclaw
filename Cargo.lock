@@ -4982,10 +4982,13 @@ version = "0.11.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "471816f3e24b85e820dee02cde962379ea1a669e5242f19c61bcbcffedf4c4fb"
 dependencies = [
+ "async-trait",
  "base64 0.22.1",
  "email-encoding",
  "email_address",
  "fastrand",
+ "futures-io",
+ "futures-util",
  "httpdate",
  "idna",
  "mime",
@@ -4995,6 +4998,7 @@ dependencies = [
  "rustls",
  "socket2",
  "tokio",
+ "tokio-rustls",
  "url",
  "webpki-roots 1.0.6",
 ]
@@ -13635,6 +13639,7 @@ name = "zeroclaw-tools"
 version = "0.7.3"
 dependencies = [
  "anyhow",
+ "async-imap",
  "async-trait",
  "base64 0.22.1",
  "chrono",
@@ -13643,12 +13648,17 @@ dependencies = [
  "futures-util",
  "glob",
  "hex",
+ "lettre",
+ "mail-parser",
  "nanohtml2text",
  "parking_lot",
  "pdf-extract",
  "probe-rs",
  "regex",
  "reqwest 0.12.28",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
  "scopeguard",
  "serde",
  "serde_json",
@@ -13656,6 +13666,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-rustls",
  "tokio-stream",
  "tokio-test",
  "tokio-tungstenite 0.29.0",

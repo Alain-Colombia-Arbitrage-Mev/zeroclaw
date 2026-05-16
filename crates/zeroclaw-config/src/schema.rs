@@ -449,6 +449,11 @@ pub struct Config {
     #[nested]
     pub opencode_cli: OpenCodeCliConfig,
 
+    /// Email (SMTP/IMAP) tool configuration (`[email]`).
+    #[serde(default)]
+    #[nested]
+    pub email: EmailConfig,
+
     /// Standard Operating Procedures engine configuration (`[sop]`).
     #[serde(default)]
     #[nested]
@@ -4081,6 +4086,153 @@ impl Default for OpenCodeCliConfig {
             timeout_secs: default_opencode_cli_timeout_secs(),
             max_output_bytes: default_opencode_cli_max_output_bytes(),
             env_passthrough: Vec::new(),
+        }
+    }
+}
+
+// ── Email (SMTP + IMAP) ──────────────────────────────────────────
+
+/// TLS mode for the SMTP connection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum EmailTlsMode {
+    /// Connect on the TLS port directly (e.g. 465).
+    ImplicitTls,
+    /// Upgrade from plaintext via STARTTLS (e.g. 587).
+    #[default]
+    Starttls,
+    /// No encryption. Test/local relays only.
+    None,
+}
+
+/// Email (SMTP outbound + IMAP inbound) tool configuration (`[email]`).
+///
+/// Address allowlists are enforced on both the sender (anti-spoofing) and
+/// the recipients (anti-spam). Recipients accept `*@domain` wildcards.
+/// Attachments must reside within `workspace_dir` after canonicalization.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "email"]
+pub struct EmailConfig {
+    /// Enable the `email` tool.
+    #[serde(default)]
+    pub enabled: bool,
+
+    // ── SMTP outbound ─────
+    /// SMTP relay hostname (empty disables `send`).
+    #[serde(default)]
+    pub smtp_host: String,
+    /// SMTP port (587 STARTTLS, 465 implicit TLS, 25 plaintext).
+    #[serde(default = "default_email_smtp_port")]
+    pub smtp_port: u16,
+    /// SMTP auth username.
+    #[serde(default)]
+    pub smtp_username: Option<String>,
+    /// SMTP auth password. Stored via OS keyring when possible.
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    #[serde(default)]
+    pub smtp_password: Option<String>,
+    /// TLS mode for SMTP.
+    #[serde(default)]
+    pub smtp_tls: EmailTlsMode,
+    /// Default From address when the agent omits it.
+    #[serde(default)]
+    pub from_address: String,
+    /// Allowlist of addresses the agent may use as `From` (anti-spoofing).
+    #[serde(default)]
+    pub from_allowlist: Vec<String>,
+    /// Allowlist of recipient addresses or `*@domain` wildcards.
+    #[serde(default)]
+    pub to_allowlist: Vec<String>,
+    /// Hard cap on recipients per call.
+    #[serde(default = "default_email_max_recipients")]
+    pub max_recipients: usize,
+    /// Permit attachments (files inside `workspace_dir`).
+    #[serde(default = "default_email_allow_attachments")]
+    pub allow_attachments: bool,
+    /// Max attachment size in bytes (5 MiB default).
+    #[serde(default = "default_email_max_attachment_bytes")]
+    pub max_attachment_bytes: u64,
+
+    // ── IMAP inbound ──────
+    /// IMAP server hostname (empty disables read operations).
+    #[serde(default)]
+    pub imap_host: String,
+    /// IMAP TLS port (typically 993).
+    #[serde(default = "default_email_imap_port")]
+    pub imap_port: u16,
+    /// IMAP auth username.
+    #[serde(default)]
+    pub imap_username: Option<String>,
+    /// IMAP auth password. Stored via OS keyring when possible.
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    #[serde(default)]
+    pub imap_password: Option<String>,
+
+    // ── Common ────────────
+    /// Per-call timeout in seconds.
+    #[serde(default = "default_email_timeout_secs")]
+    pub timeout_secs: u64,
+    /// Maximum captured body length when fetching a message (64 KiB default).
+    #[serde(default = "default_email_max_body_bytes")]
+    pub max_body_bytes: usize,
+}
+
+impl EmailConfig {
+    pub fn smtp_enabled(&self) -> bool {
+        !self.smtp_host.is_empty()
+    }
+    pub fn imap_enabled(&self) -> bool {
+        !self.imap_host.is_empty()
+    }
+}
+
+fn default_email_smtp_port() -> u16 {
+    587
+}
+fn default_email_imap_port() -> u16 {
+    993
+}
+fn default_email_max_recipients() -> usize {
+    10
+}
+fn default_email_allow_attachments() -> bool {
+    true
+}
+fn default_email_max_attachment_bytes() -> u64 {
+    5_242_880
+}
+fn default_email_timeout_secs() -> u64 {
+    30
+}
+fn default_email_max_body_bytes() -> usize {
+    65_536
+}
+
+impl Default for EmailConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            smtp_host: String::new(),
+            smtp_port: default_email_smtp_port(),
+            smtp_username: None,
+            smtp_password: None,
+            smtp_tls: EmailTlsMode::default(),
+            from_address: String::new(),
+            from_allowlist: Vec::new(),
+            to_allowlist: Vec::new(),
+            max_recipients: default_email_max_recipients(),
+            allow_attachments: default_email_allow_attachments(),
+            max_attachment_bytes: default_email_max_attachment_bytes(),
+            imap_host: String::new(),
+            imap_port: default_email_imap_port(),
+            imap_username: None,
+            imap_password: None,
+            timeout_secs: default_email_timeout_secs(),
+            max_body_bytes: default_email_max_body_bytes(),
         }
     }
 }
@@ -9379,6 +9531,7 @@ impl Default for Config {
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            email: EmailConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         }
@@ -11438,6 +11591,7 @@ impl_enum_prop_kind!(
     OtpMethod,
     SandboxBackend,
     AutonomyLevel,
+    EmailTlsMode,
 );
 
 impl HasPropKind for serde_json::Value {
@@ -12069,6 +12223,7 @@ auto_save = true
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            email: EmailConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
@@ -12639,6 +12794,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            email: EmailConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };

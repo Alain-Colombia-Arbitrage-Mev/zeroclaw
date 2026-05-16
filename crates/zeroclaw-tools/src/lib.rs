@@ -20,6 +20,7 @@ pub mod composio;
 pub mod content_search;
 pub mod data_management;
 pub mod discord_search;
+pub mod email;
 pub mod escalate;
 pub mod file_edit;
 pub mod file_write;

@@ -13,8 +13,15 @@ zeroclaw-providers.workspace = true
 zeroclaw-memory.workspace = true
 zeroclaw-infra.workspace = true
 anyhow = "1.0"
+async-imap = { version = "0.11", features = ["runtime-tokio"], default-features = false }
 async-trait = "0.1"
 base64 = "0.22"
+lettre = { version = "0.11.19", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1", "tokio1-rustls-tls"] }
+mail-parser = "0.11.2"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+rustls-pki-types = "1.14"
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["tls12", "ring"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 directories = "6.0"
 futures-util = { version = "0.3", default-features = false }
