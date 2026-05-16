@@ -449,6 +449,11 @@ pub struct Config {
     #[nested]
     pub opencode_cli: OpenCodeCliConfig,
 
+    /// Network probe tool configuration (`[net_probe]`).
+    #[serde(default)]
+    #[nested]
+    pub net_probe: NetProbeConfig,
+
     /// Standard Operating Procedures engine configuration (`[sop]`).
     #[serde(default)]
     #[nested]
@@ -4081,6 +4086,46 @@ impl Default for OpenCodeCliConfig {
             timeout_secs: default_opencode_cli_timeout_secs(),
             max_output_bytes: default_opencode_cli_max_output_bytes(),
             env_passthrough: Vec::new(),
+        }
+    }
+}
+
+// ── Network probe ───────────────────────────────────────────────
+
+/// Network probe tool configuration (`[net_probe]` section).
+///
+/// Provides DNS lookup and TCP connect diagnostics. Mirrors the SSRF policy
+/// of `http_request`: allowlist-only hosts, private/loopback addresses
+/// blocked unless `allow_private_hosts = true`.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "net-probe"]
+pub struct NetProbeConfig {
+    /// Enable the `net_probe` tool.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Hostnames (or `*`) the agent may probe. Subdomains are accepted.
+    #[serde(default)]
+    pub allowed_hosts: Vec<String>,
+    /// Allow private/loopback/link-local addresses. Off by default.
+    #[serde(default)]
+    pub allow_private_hosts: bool,
+    /// Per-call timeout in milliseconds (both DNS and TCP).
+    #[serde(default = "default_net_probe_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+fn default_net_probe_timeout_ms() -> u64 {
+    5_000
+}
+
+impl Default for NetProbeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            allowed_hosts: Vec::new(),
+            allow_private_hosts: false,
+            timeout_ms: default_net_probe_timeout_ms(),
         }
     }
 }
@@ -9379,6 +9424,7 @@ impl Default for Config {
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            net_probe: NetProbeConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         }
@@ -12069,6 +12115,7 @@ auto_save = true
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            net_probe: NetProbeConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
@@ -12639,6 +12686,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            net_probe: NetProbeConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };

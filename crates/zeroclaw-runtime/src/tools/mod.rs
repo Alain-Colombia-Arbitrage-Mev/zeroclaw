@@ -86,6 +86,7 @@ pub use zeroclaw_tools::memory_recall::MemoryRecallTool;
 pub use zeroclaw_tools::memory_store::MemoryStoreTool;
 pub use zeroclaw_tools::microsoft365::Microsoft365Tool;
 pub use zeroclaw_tools::model_routing_config::ModelRoutingConfigTool;
+pub use zeroclaw_tools::net_probe::NetProbeTool;
 pub use zeroclaw_tools::notion_tool::NotionTool;
 pub use zeroclaw_tools::opencode_cli::OpenCodeCliTool;
 #[cfg(feature = "rag-pdf")]
@@ -662,6 +663,14 @@ pub fn all_tools_with_runtime(
         tool_arcs.push(Arc::new(OpenCodeCliTool::new(
             security.clone(),
             root_config.opencode_cli.clone(),
+        )));
+    }
+
+    // Network probe diagnostics tool
+    if root_config.net_probe.enabled {
+        tool_arcs.push(Arc::new(NetProbeTool::new(
+            security.clone(),
+            root_config.net_probe.clone(),
         )));
     }
 
