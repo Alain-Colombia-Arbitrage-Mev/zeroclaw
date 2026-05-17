@@ -104,6 +104,7 @@ mod legal_compliance;
 mod market_researcher;
 mod market_sentiment_analyst;
 mod marketing;
+mod naming_strategist;
 mod negotiator;
 mod ngo_architect;
 mod personal_brand_strategist;
@@ -177,6 +178,7 @@ pub use self::legal_compliance::legal_compliance_preset;
 pub use self::market_researcher::market_researcher_preset;
 pub use self::market_sentiment_analyst::market_sentiment_analyst_preset;
 pub use self::marketing::marketing_preset;
+pub use self::naming_strategist::naming_strategist_preset;
 pub use self::negotiator::negotiator_preset;
 pub use self::ngo_architect::ngo_architect_preset;
 pub use self::personal_brand_strategist::personal_brand_strategist_preset;
@@ -289,6 +291,7 @@ mod tests {
                 legal_compliance_preset("openrouter", "x"),
             ),
             ("copywriter", copywriter_preset("openrouter", "x")),
+            ("naming_strategist", naming_strategist_preset("openrouter", "x")),
             ("negotiator", negotiator_preset("openrouter", "x")),
             ("fintech_counsel", fintech_counsel_preset("openrouter", "x")),
             (
