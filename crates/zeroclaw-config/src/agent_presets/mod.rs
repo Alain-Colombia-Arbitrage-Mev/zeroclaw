@@ -59,6 +59,7 @@
 mod account_executive;
 mod adr_writer;
 mod architect;
+mod authority_media_strategist;
 mod business_developer;
 mod capex_controller;
 mod ceo_advisor;
@@ -132,6 +133,7 @@ mod value_creation_strategist;
 pub use self::account_executive::account_executive_preset;
 pub use self::adr_writer::adr_writer_preset;
 pub use self::architect::architect_preset;
+pub use self::authority_media_strategist::authority_media_strategist_preset;
 pub use self::business_developer::business_developer_preset;
 pub use self::capex_controller::capex_controller_preset;
 pub use self::ceo_advisor::ceo_advisor_preset;
@@ -221,6 +223,7 @@ mod tests {
             ("docs", docs_preset("openrouter", "x")),
             ("planner", planner_preset("openrouter", "x")),
             ("architect", architect_preset("openrouter", "x")),
+            ("authority_media_strategist", authority_media_strategist_preset("openrouter", "x")),
             (
                 "server_architect",
                 server_architect_preset("openrouter", "x"),
