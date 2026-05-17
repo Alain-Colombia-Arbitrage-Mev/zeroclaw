@@ -449,6 +449,11 @@ pub struct Config {
     #[nested]
     pub opencode_cli: OpenCodeCliConfig,
 
+    /// Replicate video generation tool configuration (`[replicate_video]`).
+    #[serde(default)]
+    #[nested]
+    pub replicate_video: ReplicateVideoConfig,
+
     /// Standard Operating Procedures engine configuration (`[sop]`).
     #[serde(default)]
     #[nested]
@@ -4081,6 +4086,64 @@ impl Default for OpenCodeCliConfig {
             timeout_secs: default_opencode_cli_timeout_secs(),
             max_output_bytes: default_opencode_cli_max_output_bytes(),
             env_passthrough: Vec::new(),
+        }
+    }
+}
+
+// ── Replicate video ─────────────────────────────────────────────
+
+/// Replicate video generation tool configuration (`[replicate_video]`).
+///
+/// Submits predictions to <https://api.replicate.com/v1/predictions>, polls
+/// until completion, and downloads the resulting video to `workspace_dir`.
+/// The allowed model list is mandatory — Replicate hosts hundreds of models
+/// and the agent should only reach the ones operators have vetted.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "replicate-video"]
+pub struct ReplicateVideoConfig {
+    /// Enable the `replicate_video` tool.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Replicate API token. Falls back to `REPLICATE_API_TOKEN` env var.
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    #[serde(default)]
+    pub api_token: Option<String>,
+    /// Allowlist of model identifiers (`owner/model` form). Use `["*"]` to
+    /// allow any model — discouraged outside trusted environments.
+    #[serde(default)]
+    pub allowed_models: Vec<String>,
+    /// Per-HTTP-request timeout in seconds (submit, poll, download chunk).
+    #[serde(default = "default_replicate_request_timeout_secs")]
+    pub request_timeout_secs: u64,
+    /// End-to-end timeout for a full prediction (submit → poll → download).
+    #[serde(default = "default_replicate_total_timeout_secs")]
+    pub total_timeout_secs: u64,
+    /// Maximum download size in bytes (200 MiB default).
+    #[serde(default = "default_replicate_max_download_bytes")]
+    pub max_download_bytes: u64,
+}
+
+fn default_replicate_request_timeout_secs() -> u64 {
+    60
+}
+fn default_replicate_total_timeout_secs() -> u64 {
+    600
+}
+fn default_replicate_max_download_bytes() -> u64 {
+    209_715_200
+}
+
+impl Default for ReplicateVideoConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_token: None,
+            allowed_models: Vec::new(),
+            request_timeout_secs: default_replicate_request_timeout_secs(),
+            total_timeout_secs: default_replicate_total_timeout_secs(),
+            max_download_bytes: default_replicate_max_download_bytes(),
         }
     }
 }
@@ -9379,6 +9442,7 @@ impl Default for Config {
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            replicate_video: ReplicateVideoConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         }
@@ -12069,6 +12133,7 @@ auto_save = true
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            replicate_video: ReplicateVideoConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
@@ -12639,6 +12704,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            replicate_video: ReplicateVideoConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };

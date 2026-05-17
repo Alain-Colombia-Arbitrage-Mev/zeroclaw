@@ -96,6 +96,7 @@ pub use zeroclaw_tools::project_intel::ProjectIntelTool;
 pub use zeroclaw_tools::proxy_config::ProxyConfigTool;
 pub use zeroclaw_tools::pushover::PushoverTool;
 pub use zeroclaw_tools::reaction::ReactionTool;
+pub use zeroclaw_tools::replicate_video::ReplicateVideoTool;
 pub use zeroclaw_tools::report_template_tool::ReportTemplateTool;
 pub use zeroclaw_tools::screenshot::ScreenshotTool;
 pub use zeroclaw_tools::sessions::{
@@ -663,6 +664,14 @@ pub fn all_tools_with_runtime(
             security.clone(),
             root_config.opencode_cli.clone(),
         )));
+    }
+
+    // Replicate video generation tool
+    if root_config.replicate_video.enabled {
+        match ReplicateVideoTool::new(security.clone(), root_config.replicate_video.clone()) {
+            Ok(t) => tool_arcs.push(Arc::new(t)),
+            Err(e) => tracing::error!("Failed to build ReplicateVideoTool: {e:#}"),
+        }
     }
 
     // PDF extraction (feature-gated at compile time via rag-pdf)

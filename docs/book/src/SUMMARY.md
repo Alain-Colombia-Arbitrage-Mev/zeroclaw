@@ -57,6 +57,7 @@
 - [Overview](./tools/overview.md)
 - [MCP (Model Context Protocol)](./tools/mcp.md)
 - [Browser automation](./tools/browser.md)
+- [Replicate video](./tools/replicate-video.md)
 
 # Security
 
