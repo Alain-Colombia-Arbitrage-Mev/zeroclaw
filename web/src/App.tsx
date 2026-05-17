@@ -1,19 +1,35 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect, createContext, useContext, Component, type ReactNode, type ErrorInfo } from 'react';
+import {
+  useState,
+  useEffect,
+  createContext,
+  useContext,
+  Component,
+  Suspense,
+  lazy,
+  type ReactNode,
+  type ErrorInfo,
+} from 'react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/layout/Layout';
-import Dashboard from './pages/Dashboard';
-import AgentChat from './pages/AgentChat';
-import Tools from './pages/Tools';
-import Cron from './pages/Cron';
-import Integrations from './pages/Integrations';
-import Memory from './pages/Memory';
-import Config from './pages/Config';
-import Cost from './pages/Cost';
-import Logs from './pages/Logs';
-import Doctor from './pages/Doctor';
-import Pairing from './pages/Pairing';
-import Canvas from './pages/Canvas';
+
+// Route components are code-split via React.lazy so the initial bundle
+// only carries the chrome (Layout, contexts, error boundary, pairing).
+// Each page is fetched on-demand the first time its route is visited
+// and cached for subsequent navigations. Page-load fallback is the
+// same spinner used for auth bootstrapping below.
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AgentChat = lazy(() => import('./pages/AgentChat'));
+const Tools = lazy(() => import('./pages/Tools'));
+const Cron = lazy(() => import('./pages/Cron'));
+const Integrations = lazy(() => import('./pages/Integrations'));
+const Memory = lazy(() => import('./pages/Memory'));
+const Config = lazy(() => import('./pages/Config'));
+const Cost = lazy(() => import('./pages/Cost'));
+const Logs = lazy(() => import('./pages/Logs'));
+const Doctor = lazy(() => import('./pages/Doctor'));
+const Pairing = lazy(() => import('./pages/Pairing'));
+const Canvas = lazy(() => import('./pages/Canvas'));
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { DraftContext, useDraftStore } from './hooks/useDraft';
 import { setLocale, type Locale } from './lib/i18n';
@@ -226,25 +242,44 @@ function AppContent() {
   return (
     <DraftContext.Provider value={draftStore}>
       <LocaleContext.Provider value={{ locale, setAppLocale }}>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/agent" element={<AgentChat />} />
-            <Route path="/tools" element={<Tools />} />
-            <Route path="/cron" element={<Cron />} />
-            <Route path="/integrations" element={<Integrations />} />
-            <Route path="/memory" element={<Memory />} />
-            <Route path="/config" element={<Config />} />
-            <Route path="/cost" element={<Cost />} />
-            <Route path="/logs" element={<Logs />} />
-            <Route path="/doctor" element={<Doctor />} />
-            <Route path="/pairing" element={<Pairing />} />
-            <Route path="/canvas" element={<Canvas />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/agent" element={<AgentChat />} />
+              <Route path="/tools" element={<Tools />} />
+              <Route path="/cron" element={<Cron />} />
+              <Route path="/integrations" element={<Integrations />} />
+              <Route path="/memory" element={<Memory />} />
+              <Route path="/config" element={<Config />} />
+              <Route path="/cost" element={<Cost />} />
+              <Route path="/logs" element={<Logs />} />
+              <Route path="/doctor" element={<Doctor />} />
+              <Route path="/pairing" element={<Pairing />} />
+              <Route path="/canvas" element={<Canvas />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </LocaleContext.Provider>
     </DraftContext.Provider>
+  );
+}
+
+// Lightweight fallback shown while a lazy route chunk is loading.
+// Matches the auth-bootstrap spinner so the visual treatment of "we're
+// fetching something" is consistent across the app.
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--pc-bg-base)' }}>
+      <div className="flex flex-col items-center gap-4 animate-fade-in">
+        <div
+          className="h-10 w-10 border-2 rounded-full animate-spin"
+          style={{ borderColor: 'var(--pc-border)', borderTopColor: 'var(--pc-accent)' }}
+        />
+        <p className="text-sm" style={{ color: 'var(--pc-text-muted)' }}>Loading…</p>
+      </div>
+    </div>
   );
 }
 
