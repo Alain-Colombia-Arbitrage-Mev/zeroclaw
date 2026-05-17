@@ -92,6 +92,7 @@ pub use zeroclaw_tools::opencode_cli::OpenCodeCliTool;
 pub use zeroclaw_tools::pdf_read::PdfReadTool;
 pub use zeroclaw_tools::pipeline::PipelineTool;
 pub use zeroclaw_tools::poll::PollTool;
+pub use zeroclaw_tools::postiz::PostizTool;
 pub use zeroclaw_tools::project_intel::ProjectIntelTool;
 pub use zeroclaw_tools::proxy_config::ProxyConfigTool;
 pub use zeroclaw_tools::pushover::PushoverTool;
@@ -663,6 +664,14 @@ pub fn all_tools_with_runtime(
             security.clone(),
             root_config.opencode_cli.clone(),
         )));
+    }
+
+    // Postiz publishing tool
+    if root_config.postiz.enabled {
+        match PostizTool::new(security.clone(), root_config.postiz.clone()) {
+            Ok(t) => tool_arcs.push(Arc::new(t)),
+            Err(e) => tracing::error!("Failed to build PostizTool: {e:#}"),
+        }
     }
 
     // PDF extraction (feature-gated at compile time via rag-pdf)

@@ -449,6 +449,11 @@ pub struct Config {
     #[nested]
     pub opencode_cli: OpenCodeCliConfig,
 
+    /// Postiz publishing tool configuration (`[postiz]`).
+    #[serde(default)]
+    #[nested]
+    pub postiz: PostizConfig,
+
     /// Standard Operating Procedures engine configuration (`[sop]`).
     #[serde(default)]
     #[nested]
@@ -4081,6 +4086,65 @@ impl Default for OpenCodeCliConfig {
             timeout_secs: default_opencode_cli_timeout_secs(),
             max_output_bytes: default_opencode_cli_max_output_bytes(),
             env_passthrough: Vec::new(),
+        }
+    }
+}
+
+// ── Postiz ──────────────────────────────────────────────────────
+
+/// Postiz publishing tool configuration (`[postiz]` section).
+///
+/// REST client for [Postiz](https://github.com/gitroomhq/postiz-app) (cloud
+/// or self-hosted). Defaults target the hosted endpoint; override `base_url`
+/// for a self-hosted instance.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "postiz"]
+pub struct PostizConfig {
+    /// Enable the `postiz` tool.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Base URL of the Postiz instance (no trailing slash, no `/public/v1`).
+    #[serde(default = "default_postiz_base_url")]
+    pub base_url: String,
+    /// Postiz API key or OAuth token. Stored via OS keyring.
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// Provider allowlist; use `["*"]` for any. Case-insensitive.
+    #[serde(default = "default_postiz_allowed_providers")]
+    pub allowed_providers: Vec<String>,
+    /// Per-call timeout in seconds.
+    #[serde(default = "default_postiz_timeout_secs")]
+    pub timeout_secs: u64,
+    /// Maximum upload size in bytes (10 MiB default).
+    #[serde(default = "default_postiz_max_upload_bytes")]
+    pub max_upload_bytes: u64,
+}
+
+fn default_postiz_base_url() -> String {
+    "https://api.postiz.com".into()
+}
+fn default_postiz_allowed_providers() -> Vec<String> {
+    vec!["*".into()]
+}
+fn default_postiz_timeout_secs() -> u64 {
+    60
+}
+fn default_postiz_max_upload_bytes() -> u64 {
+    10_485_760
+}
+
+impl Default for PostizConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: default_postiz_base_url(),
+            api_key: None,
+            allowed_providers: default_postiz_allowed_providers(),
+            timeout_secs: default_postiz_timeout_secs(),
+            max_upload_bytes: default_postiz_max_upload_bytes(),
         }
     }
 }
@@ -9379,6 +9443,7 @@ impl Default for Config {
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            postiz: PostizConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         }
@@ -12069,6 +12134,7 @@ auto_save = true
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            postiz: PostizConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
@@ -12639,6 +12705,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            postiz: PostizConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };

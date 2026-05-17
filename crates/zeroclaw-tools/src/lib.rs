@@ -55,6 +55,7 @@ pub mod opencode_cli;
 pub mod pdf_read;
 pub mod pipeline;
 pub mod poll;
+pub mod postiz;
 pub mod project_intel;
 pub mod proxy_config;
 pub mod pushover;
