@@ -81,6 +81,7 @@ mod db_designer;
 mod deeptech_financier;
 mod designer;
 mod devops;
+mod digital_strategist;
 mod docs;
 mod energy_grid_strategist;
 mod esg_energy_counsel;
@@ -90,6 +91,7 @@ mod forensic_auditor;
 mod fundraise_captain;
 mod general_counsel;
 mod geospatial_analyst;
+mod growth_engineer;
 mod growth_hacker;
 mod idea_generator;
 mod idea_validator;
@@ -123,6 +125,7 @@ mod support_agent;
 mod tax_advisor;
 mod tester;
 mod treasurer;
+mod urban_systems_architect;
 mod valuation_analyst;
 mod value_creation_strategist;
 
@@ -150,6 +153,7 @@ pub use self::db_designer::db_designer_preset;
 pub use self::deeptech_financier::deeptech_financier_preset;
 pub use self::designer::designer_preset;
 pub use self::devops::devops_preset;
+pub use self::digital_strategist::digital_strategist_preset;
 pub use self::docs::docs_preset;
 pub use self::energy_grid_strategist::energy_grid_strategist_preset;
 pub use self::esg_energy_counsel::esg_energy_counsel_preset;
@@ -159,6 +163,7 @@ pub use self::forensic_auditor::forensic_auditor_preset;
 pub use self::fundraise_captain::fundraise_captain_preset;
 pub use self::general_counsel::general_counsel_preset;
 pub use self::geospatial_analyst::geospatial_analyst_preset;
+pub use self::growth_engineer::growth_engineer_preset;
 pub use self::growth_hacker::growth_hacker_preset;
 pub use self::idea_generator::idea_generator_preset;
 pub use self::idea_validator::idea_validator_preset;
@@ -192,6 +197,7 @@ pub use self::support_agent::support_agent_preset;
 pub use self::tax_advisor::tax_advisor_preset;
 pub use self::tester::tester_preset;
 pub use self::treasurer::treasurer_preset;
+pub use self::urban_systems_architect::urban_systems_architect_preset;
 pub use self::valuation_analyst::valuation_analyst_preset;
 pub use self::value_creation_strategist::value_creation_strategist_preset;
 
@@ -234,7 +240,10 @@ mod tests {
                 business_developer_preset("openrouter", "x"),
             ),
             ("product_manager", product_manager_preset("openrouter", "x")),
+            ("growth_engineer", growth_engineer_preset("openrouter", "x")),
             ("growth_hacker", growth_hacker_preset("openrouter", "x")),
+            ("digital_strategist", digital_strategist_preset("openrouter", "x")),
+            ("urban_systems_architect", urban_systems_architect_preset("openrouter", "x")),
             (
                 "pricing_strategist",
                 pricing_strategist_preset("openrouter", "x"),
