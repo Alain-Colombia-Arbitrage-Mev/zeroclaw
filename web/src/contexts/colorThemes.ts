@@ -12,7 +12,9 @@ export type ColorThemeId =
   | 'cobalt2'
   | 'flexoki-dark' | 'flexoki-light'
   | 'hacker-green'
-  | 'material-dark' | 'material-light';
+  | 'material-dark' | 'material-light'
+  // Signature themes — designed for ZeroClaw / Octopus Labs identity.
+  | 'octopus' | 'deep-space' | 'solar';
 
 export interface ColorThemeDef {
   id: ColorThemeId;
