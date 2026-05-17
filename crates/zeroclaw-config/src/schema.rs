@@ -2059,85 +2059,78 @@ impl Default for CostConfig {
     }
 }
 
-/// Default pricing for popular models (USD per 1M tokens)
+/// Default pricing for the seven-model routing-tier set (USD per
+/// 1M tokens). These are the models that
+/// `agent_presets::model_tier::tier_to_model` returns; any model
+/// not in this map costs the daemon nothing in the budget check,
+/// which silently disables enforcement — keep the table in sync.
+///
+/// Prices are operator-supplied estimates as of 2026-05; verify
+/// against each provider's pricing page before relying on the
+/// budget gate for invoicing-grade accuracy.
 fn get_default_pricing() -> std::collections::HashMap<String, ModelPricing> {
     let mut prices = std::collections::HashMap::new();
 
-    // Anthropic models
+    // S1 — irreversible judgment.
     prices.insert(
-        "anthropic/claude-sonnet-4-20250514".into(),
-        ModelPricing {
-            input: 3.0,
-            output: 15.0,
-        },
-    );
-    prices.insert(
-        "anthropic/claude-opus-4-20250514".into(),
+        "anthropic/claude-opus-4.7".into(),
         ModelPricing {
             input: 15.0,
             output: 75.0,
         },
     );
+
+    // S2 — orchestration + heavy agentic. Also S1 / S3 fallback.
     prices.insert(
-        "anthropic/claude-3.5-sonnet".into(),
+        "openai/gpt-5.5".into(),
         ModelPricing {
-            input: 3.0,
-            output: 15.0,
-        },
-    );
-    prices.insert(
-        "anthropic/claude-3-haiku".into(),
-        ModelPricing {
-            input: 0.25,
-            output: 1.25,
+            input: 10.0,
+            output: 30.0,
         },
     );
 
-    // OpenAI models
+    // S3 — reasoning workhorse. Also S4 / S5 fallback.
     prices.insert(
-        "openai/gpt-4o".into(),
+        "xiaomi/mimo-v2.5-pro".into(),
         ModelPricing {
-            input: 5.0,
-            output: 15.0,
-        },
-    );
-    prices.insert(
-        "openai/gpt-4o-mini".into(),
-        ModelPricing {
-            input: 0.15,
-            output: 0.60,
-        },
-    );
-    prices.insert(
-        "openai/o1-preview".into(),
-        ModelPricing {
-            input: 15.0,
-            output: 60.0,
-        },
-    );
-
-    // Google models
-    prices.insert(
-        "google/gemini-2.0-flash".into(),
-        ModelPricing {
-            input: 0.10,
-            output: 0.40,
-        },
-    );
-    prices.insert(
-        "google/gemini-1.5-pro".into(),
-        ModelPricing {
-            input: 1.25,
+            input: 1.5,
             output: 5.0,
         },
     );
 
-    // DeepSeek models
+    // S4 — code / infra / data.
     prices.insert(
         "deepseek/deepseek-v4-pro".into(),
         ModelPricing {
             input: 0.435,
             output: 0.87,
+        },
+    );
+
+    // S5 — creative generation + media prompts.
+    prices.insert(
+        "moonshotai/kimi-k2.6".into(),
+        ModelPricing {
+            input: 0.6,
+            output: 2.5,
+        },
+    );
+
+    // S6 — mid-tier cheap. Default for unknown roles.
+    prices.insert(
+        "openai/gpt-5.4-mini".into(),
+        ModelPricing {
+            input: 0.5,
+            output: 2.0,
+        },
+    );
+
+    // S7 — atomic / classification.
+    prices.insert(
+        "openai/gpt-5.4-nano".into(),
+        ModelPricing {
+            input: 0.1,
+            output: 0.4,
         },
     );
 

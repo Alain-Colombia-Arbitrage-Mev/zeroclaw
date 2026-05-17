@@ -68,6 +68,7 @@ mod cicd;
 mod coder;
 mod common;
 mod community_growth_specialist;
+mod model_tier;
 mod competitor_analyst;
 mod content_creator;
 mod content_strategist;
@@ -137,6 +138,9 @@ pub use self::chro::chro_preset;
 pub use self::cicd::cicd_preset;
 pub use self::coder::coder_preset;
 pub use self::community_growth_specialist::community_growth_specialist_preset;
+pub use self::model_tier::{
+    ModelTier, recommended_tier_for_role, tier_default_temperature, tier_fallback, tier_to_model,
+};
 pub use self::competitor_analyst::competitor_analyst_preset;
 pub use self::content_creator::content_creator_preset;
 pub use self::content_strategist::content_strategist_preset;
