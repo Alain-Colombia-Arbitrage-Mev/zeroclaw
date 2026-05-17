@@ -449,6 +449,11 @@ pub struct Config {
     #[nested]
     pub opencode_cli: OpenCodeCliConfig,
 
+    /// Together embeddings tool configuration (`[together_embeddings]`).
+    #[serde(default)]
+    #[nested]
+    pub together_embeddings: TogetherEmbeddingsConfig,
+
     /// Standard Operating Procedures engine configuration (`[sop]`).
     #[serde(default)]
     #[nested]
@@ -4081,6 +4086,76 @@ impl Default for OpenCodeCliConfig {
             timeout_secs: default_opencode_cli_timeout_secs(),
             max_output_bytes: default_opencode_cli_max_output_bytes(),
             env_passthrough: Vec::new(),
+        }
+    }
+}
+
+// ── Together embeddings ─────────────────────────────────────────
+
+/// Together embeddings tool configuration (`[together_embeddings]`).
+///
+/// REST client for <https://api.together.xyz/v1/embeddings>. Scope: agentic
+/// use (the agent calls the tool to embed text on demand). Using Together
+/// as the automatic memory embedding provider is a separate, larger change.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "together-embeddings"]
+pub struct TogetherEmbeddingsConfig {
+    /// Enable the `together_embeddings` tool.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Base URL (override only for OpenAI-compatible alternatives).
+    #[serde(default = "default_together_embeddings_base_url")]
+    pub base_url: String,
+    /// Together API key. Falls back to the env var named in `api_key_env`.
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// Env var to read when `api_key` is unset. Default: `TOGETHER_API_KEY`.
+    #[serde(default = "default_together_embeddings_api_key_env")]
+    pub api_key_env: String,
+    /// Allowed model IDs. Use `["*"]` to allow any.
+    #[serde(default)]
+    pub allowed_models: Vec<String>,
+    /// Max items per batch call (Together caps this at 100; we default lower).
+    #[serde(default = "default_together_embeddings_max_batch_size")]
+    pub max_batch_size: usize,
+    /// Hard cap on aggregate character count per call (bills are per-token).
+    #[serde(default = "default_together_embeddings_max_total_chars")]
+    pub max_total_chars: usize,
+    /// HTTP timeout in seconds.
+    #[serde(default = "default_together_embeddings_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+fn default_together_embeddings_base_url() -> String {
+    "https://api.together.xyz".into()
+}
+fn default_together_embeddings_api_key_env() -> String {
+    "TOGETHER_API_KEY".into()
+}
+fn default_together_embeddings_max_batch_size() -> usize {
+    32
+}
+fn default_together_embeddings_max_total_chars() -> usize {
+    100_000
+}
+fn default_together_embeddings_timeout_secs() -> u64 {
+    30
+}
+
+impl Default for TogetherEmbeddingsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: default_together_embeddings_base_url(),
+            api_key: None,
+            api_key_env: default_together_embeddings_api_key_env(),
+            allowed_models: Vec::new(),
+            max_batch_size: default_together_embeddings_max_batch_size(),
+            max_total_chars: default_together_embeddings_max_total_chars(),
+            timeout_secs: default_together_embeddings_timeout_secs(),
         }
     }
 }
@@ -9379,6 +9454,7 @@ impl Default for Config {
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            together_embeddings: TogetherEmbeddingsConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         }
@@ -12069,6 +12145,7 @@ auto_save = true
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            together_embeddings: TogetherEmbeddingsConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
@@ -12639,6 +12716,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            together_embeddings: TogetherEmbeddingsConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };

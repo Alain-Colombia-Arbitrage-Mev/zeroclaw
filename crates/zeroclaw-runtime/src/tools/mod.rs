@@ -103,6 +103,7 @@ pub use zeroclaw_tools::sessions::{
 };
 pub use zeroclaw_tools::swarm::SwarmTool;
 pub use zeroclaw_tools::text_browser::TextBrowserTool;
+pub use zeroclaw_tools::together_embeddings::TogetherEmbeddingsTool;
 pub use zeroclaw_tools::tool_search::ToolSearchTool;
 pub use zeroclaw_tools::weather_tool::WeatherTool;
 pub use zeroclaw_tools::web_fetch::WebFetchTool;
@@ -663,6 +664,15 @@ pub fn all_tools_with_runtime(
             security.clone(),
             root_config.opencode_cli.clone(),
         )));
+    }
+
+    // Together embeddings tool
+    if root_config.together_embeddings.enabled {
+        match TogetherEmbeddingsTool::new(security.clone(), root_config.together_embeddings.clone())
+        {
+            Ok(t) => tool_arcs.push(Arc::new(t)),
+            Err(e) => tracing::error!("Failed to build TogetherEmbeddingsTool: {e:#}"),
+        }
     }
 
     // PDF extraction (feature-gated at compile time via rag-pdf)

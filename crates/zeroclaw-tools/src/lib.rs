@@ -65,6 +65,7 @@ pub mod screenshot;
 pub mod sessions;
 pub mod swarm;
 pub mod text_browser;
+pub mod together_embeddings;
 pub mod tool_search;
 pub mod weather_tool;
 pub mod web_fetch;
