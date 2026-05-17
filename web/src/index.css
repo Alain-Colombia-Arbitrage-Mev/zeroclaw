@@ -84,6 +84,16 @@
   --pc-state-warning: #FCD34D;
   --pc-state-warning-light: #FDE68A;
 
+  /* Department accents — used by the constellation graph to tint each
+     departmental orbit + its inbound lines + dept badge. Defaults pick
+     a distinctive hue per department so a glance at the mesh reveals
+     who's busy. Themes can override to a tighter or wider palette. */
+  --pc-dept-csu:  #F9A8D4;
+  --pc-dept-idea: #FDBA74;
+  --pc-dept-gtm:  #C084FC;
+  --pc-dept-reg:  #C4B5FD;
+  --pc-dept-imp:  #A7F3D0;
+
   /* Hover */
   --pc-hover: rgba(255, 255, 255, 0.05);
   --pc-hover-strong: rgba(255, 255, 255, 0.08);

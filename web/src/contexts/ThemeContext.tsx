@@ -246,9 +246,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const resolvedId = resolveColorTheme(s.theme, s.colorTheme);
     const ct = colorThemeMap[resolvedId];
     const themeVars = ct?.vars ?? colorThemeMap[DEFAULT_DARK_THEME].vars;
+    // Accent override only applies to neutral themes (default + oled).
+    // Opinionated themes carry their own accent identity (Octopus = violet,
+    // Solar = amber, Dracula = purple, etc.) — overriding their --pc-accent
+    // with the user's accent picker would break them visually. The neutral
+    // themes deliberately stay accent-less so the picker controls them.
+    const isNeutral: boolean =
+      resolvedId === 'default-dark' ||
+      resolvedId === 'default-light' ||
+      resolvedId === 'oled-black';
     applyVars({
       ...themeVars,
-      ...accents[s.accent],
+      ...(isNeutral ? accents[s.accent] : {}),
       ...fontVars(s.uiFont, s.monoFont, s.uiFontSize, s.monoFontSize),
     });
   }, []);
