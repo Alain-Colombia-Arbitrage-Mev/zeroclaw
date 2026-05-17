@@ -56,6 +56,34 @@
   --pc-accent-glow: rgba(34, 211, 238, 0.1);
   --pc-accent-rgb: 34, 211, 238;
 
+  /* Mission HUD palette — the Orchestrator surface is a different visual
+     language than the rest of the dashboard (mission-control / radar /
+     telemetry HUD). It needs its own tokens because the existing
+     --pc-accent family is the dashboard accent, not the mission-control
+     blue. Defaults here match the historical sky-300/slate-400 palette
+     so the tokenization is a no-op visually; individual themes override
+     these to tint the constellation. */
+  --pc-mission-text-primary: #E0F2FE;
+  --pc-mission-text-secondary: #BAE6FD;
+  --pc-mission-text-muted: #5BA8D9;
+  --pc-mission-text-faint: #94A3B8;
+  --pc-mission-hub: #7DD3FC;
+  --pc-mission-line-rgb: 125, 211, 252;
+  --pc-mission-bg-base-rgb: 3, 6, 12;
+  --pc-mission-bg-panel-rgb: 12, 16, 24;
+
+  /* State indicators — used for agent / job lifecycle visualization.
+     `running` defaults to the mission-hub colour so a busy agent reads
+     as "lit up in the same family"; `done` is green-300, `error` is
+     red-400, `warning` is amber-300. Themes may retint to taste. */
+  --pc-state-running: #7DD3FC;
+  --pc-state-running-light: #BAE6FD;
+  --pc-state-done: #86EFAC;
+  --pc-state-error: #F87171;
+  --pc-state-error-light: #FCA5A5;
+  --pc-state-warning: #FCD34D;
+  --pc-state-warning-light: #FDE68A;
+
   /* Hover */
   --pc-hover: rgba(255, 255, 255, 0.05);
   --pc-hover-strong: rgba(255, 255, 255, 0.08);

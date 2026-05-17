@@ -114,7 +114,7 @@ const DEPARTMENTS: {
     id: 'revenue',
     label: 'REVENUE',
     callsign: 'REV',
-    accent: '#86EFAC',
+    accent: 'var(--pc-state-done)',
     agents: [
       'sdr_outbound',
       'account_executive',
@@ -126,7 +126,7 @@ const DEPARTMENTS: {
     id: 'finance',
     label: 'FINANCE · RISK',
     callsign: 'FIN',
-    accent: '#FCD34D',
+    accent: 'var(--pc-state-warning)',
     agents: [
       'finance_controller',
       'risk_analyst',
@@ -162,7 +162,7 @@ const DEPARTMENTS: {
     id: 'engineering',
     label: 'ENGINEERING',
     callsign: 'ENG',
-    accent: '#7DD3FC',
+    accent: 'var(--pc-mission-hub)',
     agents: [
       'planner',
       'architect',
@@ -203,9 +203,9 @@ const STAGE_META: Record<TenantStage, { label: string; ordinal: number }> = {
 };
 
 const CATEGORY_META: Record<TenantCategory, { label: string; tint: string }> = {
-  saas: { label: 'SAAS', tint: '#7DD3FC' },
-  marketplace: { label: 'MARKETPLACE', tint: '#86EFAC' },
-  fintech: { label: 'FINTECH', tint: '#FCD34D' },
+  saas: { label: 'SAAS', tint: 'var(--pc-mission-hub)' },
+  marketplace: { label: 'MARKETPLACE', tint: 'var(--pc-state-done)' },
+  fintech: { label: 'FINTECH', tint: 'var(--pc-state-warning)' },
   ecommerce: { label: 'E-COM', tint: '#F9A8D4' },
   agency: { label: 'AGENCY', tint: '#C084FC' },
   hardware: { label: 'HARDWARE', tint: '#FDBA74' },
@@ -218,7 +218,7 @@ const CATEGORY_META: Record<TenantCategory, { label: string; tint: string }> = {
   // Cool cyan for nonprofit / NGO — sits with ngo_architect,
   // latam_solar_ngo_counsel, sovereign_advisor visually.
   nonprofit: { label: 'NONPROFIT', tint: '#67E8F9' },
-  other: { label: 'OTHER', tint: '#94A3B8' },
+  other: { label: 'OTHER', tint: 'var(--pc-mission-text-faint)' },
 };
 
 export default function Orchestrator() {
@@ -499,8 +499,8 @@ export default function Orchestrator() {
         <div
           className="h-8 w-8 border-2 rounded-full animate-spin"
           style={{
-            borderColor: 'rgba(125, 211, 252, 0.2)',
-            borderTopColor: '#7DD3FC',
+            borderColor: 'rgba(var(--pc-mission-line-rgb), 0.2)',
+            borderTopColor: 'var(--pc-mission-hub)',
           }}
         />
       </div>
@@ -566,7 +566,7 @@ export default function Orchestrator() {
           style={{
             background: 'rgba(239, 68, 68, 0.08)',
             borderColor: 'rgba(239, 68, 68, 0.4)',
-            color: '#FCA5A5',
+            color: 'var(--pc-state-error-light)',
             letterSpacing: '0.1em',
           }}
         >
@@ -674,12 +674,12 @@ function ConsoleFooter({
         runningCount > 0
           ? `${runningCount}/${agentCount} ACTIVE`
           : 'STANDBY',
-      color: runningCount > 0 ? '#7DD3FC' : undefined,
+      color: runningCount > 0 ? 'var(--pc-mission-hub)' : undefined,
     },
     {
       label: 'LINK',
       value: connected ? 'AOS · S-BAND' : 'LOS · ABORT',
-      color: connected ? '#86EFAC' : '#F87171',
+      color: connected ? 'var(--pc-state-done)' : 'var(--pc-state-error)',
     },
     { label: 'CONSOLE', value: 'ORCH-1' },
   ];
@@ -687,8 +687,8 @@ function ConsoleFooter({
     <div
       className="rounded border overflow-hidden flex items-stretch text-[10px]"
       style={{
-        background: 'rgba(3, 6, 12, 0.95)',
-        borderColor: 'rgba(125, 211, 252, 0.18)',
+        background: 'rgba(var(--pc-mission-bg-base-rgb), 0.95)',
+        borderColor: 'rgba(var(--pc-mission-line-rgb), 0.18)',
         fontFamily: 'ui-monospace, monospace',
       }}
     >
@@ -696,15 +696,15 @@ function ConsoleFooter({
         <div
           key={c.label}
           className={`px-3 py-1.5 flex items-center gap-2 ${i < cells.length - 1 ? 'border-r' : ''} flex-1 min-w-[140px]`}
-          style={{ borderColor: 'rgba(125, 211, 252, 0.1)' }}
+          style={{ borderColor: 'rgba(var(--pc-mission-line-rgb), 0.1)' }}
         >
-          <span style={{ color: '#5BA8D9', letterSpacing: '0.3em', minWidth: 56 }}>
+          <span style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.3em', minWidth: 56 }}>
             {c.label}
           </span>
           <span
             className="truncate"
             style={{
-              color: c.color ?? '#BAE6FD',
+              color: c.color ?? 'var(--pc-mission-text-secondary)',
               letterSpacing: '0.12em',
             }}
           >
@@ -820,22 +820,22 @@ function CommandHud({
           : 'idle';
   const sigColor =
     sigState === 'go'
-      ? '#86EFAC'
+      ? 'var(--pc-state-done)'
       : sigState === 'amber'
-        ? '#FCD34D'
+        ? 'var(--pc-state-warning)'
         : sigState === 'red'
-          ? '#F87171'
-          : '#5BA8D9';
+          ? 'var(--pc-state-error)'
+          : 'var(--pc-mission-text-muted)';
 
   // Aggregate mission status — used for the title-bar accent.
   const masterStatus =
     !connected
-      ? { label: 'ABORT', color: '#F87171' }
+      ? { label: 'ABORT', color: 'var(--pc-state-error)' }
       : errorCount > 0
-        ? { label: 'CAUTION', color: '#FCD34D' }
+        ? { label: 'CAUTION', color: 'var(--pc-state-warning)' }
         : !activeTenant
-          ? { label: 'HOLD', color: '#FCD34D' }
-          : { label: 'GO', color: '#86EFAC' };
+          ? { label: 'HOLD', color: 'var(--pc-state-warning)' }
+          : { label: 'GO', color: 'var(--pc-state-done)' };
 
   const designator = missionDesignator(now);
   const dayNumber = Math.floor(met / 86400) + 1;
@@ -845,7 +845,7 @@ function CommandHud({
       className="rounded border overflow-hidden"
       style={{
         background:
-          'linear-gradient(180deg, rgba(12, 16, 24, 0.98), rgba(8, 11, 18, 0.95))',
+          'linear-gradient(180deg, rgba(var(--pc-mission-bg-panel-rgb), 0.98), rgba(8, 11, 18, 0.95))',
         borderColor: masterStatus.color + '33',
         boxShadow: `inset 0 1px 0 ${masterStatus.color}22`,
       }}
@@ -854,8 +854,8 @@ function CommandHud({
       <div
         className="flex items-center justify-between gap-4 px-4 py-2 border-b text-[10px] flex-wrap"
         style={{
-          borderColor: 'rgba(125, 211, 252, 0.08)',
-          background: 'rgba(3, 6, 12, 0.7)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.08)',
+          background: 'rgba(var(--pc-mission-bg-base-rgb), 0.7)',
           fontFamily: 'ui-monospace, monospace',
         }}
       >
@@ -869,15 +869,15 @@ function CommandHud({
                 masterStatus.label === 'GO' ? 'pulse 2s infinite' : undefined,
             }}
           />
-          <span style={{ color: '#5BA8D9', letterSpacing: '0.35em' }}>
+          <span style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.35em' }}>
             OCTOPUS · MCC
           </span>
-          <span style={{ color: 'rgba(125, 211, 252, 0.25)' }}>│</span>
-          <span style={{ color: '#94A3B8', letterSpacing: '0.2em' }}>
+          <span style={{ color: 'rgba(var(--pc-mission-line-rgb), 0.25)' }}>│</span>
+          <span style={{ color: 'var(--pc-mission-text-faint)', letterSpacing: '0.2em' }}>
             {designator}
           </span>
-          <span style={{ color: 'rgba(125, 211, 252, 0.25)' }}>│</span>
-          <span style={{ color: '#94A3B8', letterSpacing: '0.2em' }}>
+          <span style={{ color: 'rgba(var(--pc-mission-line-rgb), 0.25)' }}>│</span>
+          <span style={{ color: 'var(--pc-mission-text-faint)', letterSpacing: '0.2em' }}>
             DAY {dayNumber.toString().padStart(2, '0')}
           </span>
         </div>
@@ -891,7 +891,7 @@ function CommandHud({
           {/* Status light cluster */}
           <div
             className="inline-flex items-stretch rounded-sm border overflow-hidden"
-            style={{ borderColor: 'rgba(125, 211, 252, 0.25)' }}
+            style={{ borderColor: 'rgba(var(--pc-mission-line-rgb), 0.25)' }}
           >
             <StatusLight label="TLM" go={tlmGo} />
             <StatusLight label="CMD" go={cmdGo} />
@@ -938,7 +938,7 @@ function CommandHud({
               className="flex items-center gap-3 rounded-sm transition-colors px-1 py-0.5"
               style={{
                 cursor: tenants.length > 1 ? 'pointer' : 'default',
-                background: tenantMenuOpen ? 'rgba(125, 211, 252, 0.06)' : 'transparent',
+                background: tenantMenuOpen ? 'rgba(var(--pc-mission-line-rgb), 0.06)' : 'transparent',
               }}
               title={tenants.length > 1 ? 'Switch active tenant' : undefined}
             >
@@ -947,7 +947,7 @@ function CommandHud({
                 style={{
                   width: 44,
                   height: 44,
-                  background: 'rgba(3, 6, 12, 0.95)',
+                  background: 'rgba(var(--pc-mission-bg-base-rgb), 0.95)',
                   border: `2px solid ${cat.tint}66`,
                 }}
               >
@@ -968,21 +968,21 @@ function CommandHud({
                   <span
                     className="text-[9px]"
                     style={{
-                      color: '#5BA8D9',
+                      color: 'var(--pc-mission-text-muted)',
                       fontFamily: 'ui-monospace, monospace',
                       letterSpacing: '0.25em',
                     }}
                   >
                     · MISSION
                     {tenants.length > 1 && (
-                      <span style={{ color: '#7DD3FC' }}> · {tenants.length} ⌄</span>
+                      <span style={{ color: 'var(--pc-mission-hub)' }}> · {tenants.length} ⌄</span>
                     )}
                   </span>
                 </div>
                 <p
                   className="text-base"
                   style={{
-                    color: '#E0F2FE',
+                    color: 'var(--pc-mission-text-primary)',
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                     letterSpacing: '0.12em',
                     fontWeight: 500,
@@ -1003,15 +1003,15 @@ function CommandHud({
                 className="absolute top-full left-0 mt-1 rounded border z-50 min-w-[280px]"
                 style={{
                   background: 'rgba(8, 11, 18, 0.98)',
-                  borderColor: 'rgba(125, 211, 252, 0.4)',
+                  borderColor: 'rgba(var(--pc-mission-line-rgb), 0.4)',
                   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
                 }}
               >
                 <div
                   className="px-3 py-2 text-[9px] border-b"
                   style={{
-                    color: '#5BA8D9',
-                    borderColor: 'rgba(125, 211, 252, 0.12)',
+                    color: 'var(--pc-mission-text-muted)',
+                    borderColor: 'rgba(var(--pc-mission-line-rgb), 0.12)',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.3em',
                   }}
@@ -1050,7 +1050,7 @@ function CommandHud({
                             <div
                               className="text-[12px] truncate"
                               style={{
-                                color: isActive ? '#E0F2FE' : '#BAE6FD',
+                                color: isActive ? 'var(--pc-mission-text-primary)' : 'var(--pc-mission-text-secondary)',
                                 letterSpacing: '0.08em',
                                 fontWeight: isActive ? 600 : 400,
                               }}
@@ -1066,10 +1066,10 @@ function CommandHud({
                               >
                                 {tCat.label}
                               </span>
-                              <span style={{ color: 'rgba(125, 211, 252, 0.3)' }}>·</span>
+                              <span style={{ color: 'rgba(var(--pc-mission-line-rgb), 0.3)' }}>·</span>
                               <span
                                 style={{
-                                  color: '#94A3B8',
+                                  color: 'var(--pc-mission-text-faint)',
                                   letterSpacing: '0.2em',
                                 }}
                               >
@@ -1077,8 +1077,8 @@ function CommandHud({
                               </span>
                               {t.activities && t.activities.length > 0 && (
                                 <>
-                                  <span style={{ color: 'rgba(125, 211, 252, 0.3)' }}>·</span>
-                                  <span style={{ color: '#94A3B8' }}>
+                                  <span style={{ color: 'rgba(var(--pc-mission-line-rgb), 0.3)' }}>·</span>
+                                  <span style={{ color: 'var(--pc-mission-text-faint)' }}>
                                     +{t.activities.length}act
                                   </span>
                                 </>
@@ -1107,8 +1107,8 @@ function CommandHud({
                           }}
                           className="px-2 flex items-center justify-center"
                           style={{
-                            color: '#7DD3FC',
-                            borderLeft: '1px solid rgba(125, 211, 252, 0.1)',
+                            color: 'var(--pc-mission-hub)',
+                            borderLeft: '1px solid rgba(var(--pc-mission-line-rgb), 0.1)',
                           }}
                           title="Edit this mission"
                         >
@@ -1123,8 +1123,8 @@ function CommandHud({
                           }}
                           className="px-2 flex items-center justify-center"
                           style={{
-                            color: '#F87171',
-                            borderLeft: '1px solid rgba(125, 211, 252, 0.1)',
+                            color: 'var(--pc-state-error)',
+                            borderLeft: '1px solid rgba(var(--pc-mission-line-rgb), 0.1)',
                           }}
                           title="Delete this mission"
                         >
@@ -1142,8 +1142,8 @@ function CommandHud({
                   }}
                   className="w-full px-3 py-2 text-[10px] flex items-center gap-2 border-t"
                   style={{
-                    borderColor: 'rgba(125, 211, 252, 0.12)',
-                    color: '#7DD3FC',
+                    borderColor: 'rgba(var(--pc-mission-line-rgb), 0.12)',
+                    color: 'var(--pc-mission-hub)',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.25em',
                   }}
@@ -1158,9 +1158,9 @@ function CommandHud({
             onClick={onNewTenant}
             className="flex items-center gap-2 px-3 py-2 rounded-sm border text-xs"
             style={{
-              background: 'rgba(125, 211, 252, 0.06)',
-              borderColor: 'rgba(125, 211, 252, 0.4)',
-              color: '#7DD3FC',
+              background: 'rgba(var(--pc-mission-line-rgb), 0.06)',
+              borderColor: 'rgba(var(--pc-mission-line-rgb), 0.4)',
+              color: 'var(--pc-mission-hub)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.2em',
             }}
@@ -1173,8 +1173,8 @@ function CommandHud({
         <div
           className="inline-flex rounded-sm p-0.5 border"
           style={{
-            background: 'rgba(3, 6, 12, 0.7)',
-            borderColor: 'rgba(125, 211, 252, 0.18)',
+            background: 'rgba(var(--pc-mission-bg-base-rgb), 0.7)',
+            borderColor: 'rgba(var(--pc-mission-line-rgb), 0.18)',
           }}
           role="tablist"
         >
@@ -1196,11 +1196,11 @@ function CommandHud({
                 className="px-3 py-1.5 text-[10px] inline-flex items-center gap-1.5"
                 style={{
                   background: active
-                    ? 'rgba(125, 211, 252, 0.12)'
+                    ? 'rgba(var(--pc-mission-line-rgb), 0.12)'
                     : 'transparent',
-                  color: active ? '#E0F2FE' : '#5BA8D9',
+                  color: active ? 'var(--pc-mission-text-primary)' : 'var(--pc-mission-text-muted)',
                   border: active
-                    ? '1px solid rgba(125, 211, 252, 0.45)'
+                    ? '1px solid rgba(var(--pc-mission-line-rgb), 0.45)'
                     : '1px solid transparent',
                   fontFamily: 'ui-monospace, monospace',
                   letterSpacing: '0.22em',
@@ -1217,8 +1217,8 @@ function CommandHud({
       <div
         className="grid grid-cols-2 md:grid-cols-4 gap-px border-t"
         style={{
-          borderColor: 'rgba(125, 211, 252, 0.1)',
-          background: 'rgba(125, 211, 252, 0.06)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.1)',
+          background: 'rgba(var(--pc-mission-line-rgb), 0.06)',
         }}
       >
         <Stat label="FLEET" value={agentCount.toString()} />
@@ -1261,7 +1261,7 @@ function LaunchFromZeroConfirm({
 }) {
   const [typed, setTyped] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const tint = '#FCD34D';
+  const tint = 'var(--pc-state-warning)';
   const ready = typed.trim() === tenant.id;
 
   const submit = async () => {
@@ -1291,14 +1291,14 @@ function LaunchFromZeroConfirm({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(3, 6, 12, 0.92)' }}
+      style={{ background: 'rgba(var(--pc-mission-bg-base-rgb), 0.92)' }}
       onClick={onCancel}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="rounded border p-6 w-full max-w-md space-y-4"
         style={{
-          background: 'rgba(12, 16, 24, 0.95)',
+          background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.95)',
           borderColor: tint + '88',
           borderLeft: `4px solid ${tint}`,
           boxShadow: `inset 0 1px 0 ${tint}22`,
@@ -1314,7 +1314,7 @@ function LaunchFromZeroConfirm({
           </p>
           <h2
             className="text-xl mt-1"
-            style={{ color: '#FDE68A', letterSpacing: '0.18em' }}
+            style={{ color: 'var(--pc-state-warning-light)', letterSpacing: '0.18em' }}
           >
             🚀 LAUNCH FROM ZERO
           </h2>
@@ -1325,27 +1325,27 @@ function LaunchFromZeroConfirm({
           style={{
             background: 'rgba(252, 211, 77, 0.05)',
             borderColor: 'rgba(252, 211, 77, 0.25)',
-            color: '#FDE68A',
+            color: 'var(--pc-state-warning-light)',
             letterSpacing: '0.04em',
             lineHeight: 1.5,
           }}
         >
           <p style={{ fontWeight: 600 }}>
             {tenant.name}{' '}
-            <span style={{ color: '#94A3B8', fontWeight: 'normal' }}>
+            <span style={{ color: 'var(--pc-mission-text-faint)', fontWeight: 'normal' }}>
               · {tenant.id}
             </span>
           </p>
           <ol className="mt-2 list-decimal list-inside space-y-1">
             <li>
-              <span style={{ color: '#FCA5A5' }}>WIPE</span> every file under{' '}
-              <code style={{ color: '#7DD3FC' }}>
+              <span style={{ color: 'var(--pc-state-error-light)' }}>WIPE</span> every file under{' '}
+              <code style={{ color: 'var(--pc-mission-hub)' }}>
                 companies/{tenant.id}/deliverables/
               </code>{' '}
               (unrecoverable)
             </li>
             <li>
-              <span style={{ color: '#86EFAC' }}>FIRE</span> {agentTotal}{' '}
+              <span style={{ color: 'var(--pc-state-done)' }}>FIRE</span> {agentTotal}{' '}
               agents across {applicable.length} sprints in parallel
             </li>
             <li>
@@ -1355,7 +1355,7 @@ function LaunchFromZeroConfirm({
           </ol>
           <p
             className="mt-2"
-            style={{ color: '#94A3B8', fontSize: 10 }}
+            style={{ color: 'var(--pc-mission-text-faint)', fontSize: 10 }}
           >
             Memory namespaces, sessions, tenant config and the legacy
             unscoped folder are NOT touched.
@@ -1365,7 +1365,7 @@ function LaunchFromZeroConfirm({
         <div>
           <label
             className="text-[10px] block mb-1"
-            style={{ color: '#5BA8D9', letterSpacing: '0.25em' }}
+            style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.25em' }}
           >
             TYPE <span style={{ color: tint }}>{tenant.id}</span> TO CONFIRM
           </label>
@@ -1377,9 +1377,9 @@ function LaunchFromZeroConfirm({
             autoFocus
             className="w-full px-3 py-2 rounded-sm text-sm tabular-nums"
             style={{
-              background: 'rgba(3, 6, 12, 0.7)',
-              border: `1px solid ${ready ? tint : 'rgba(125, 211, 252, 0.3)'}`,
-              color: ready ? '#FDE68A' : '#BAE6FD',
+              background: 'rgba(var(--pc-mission-bg-base-rgb), 0.7)',
+              border: `1px solid ${ready ? tint : 'rgba(var(--pc-mission-line-rgb), 0.3)'}`,
+              color: ready ? 'var(--pc-state-warning-light)' : 'var(--pc-mission-text-secondary)',
               letterSpacing: '0.06em',
             }}
           />
@@ -1393,8 +1393,8 @@ function LaunchFromZeroConfirm({
             className="px-4 py-2 rounded-sm text-[10px]"
             style={{
               background: 'transparent',
-              border: '1px solid rgba(125, 211, 252, 0.2)',
-              color: '#5BA8D9',
+              border: '1px solid rgba(var(--pc-mission-line-rgb), 0.2)',
+              color: 'var(--pc-mission-text-muted)',
               letterSpacing: '0.25em',
             }}
           >
@@ -1406,9 +1406,9 @@ function LaunchFromZeroConfirm({
             disabled={!ready || submitting}
             className="px-4 py-2 rounded-sm text-[10px]"
             style={{
-              background: ready ? '#FCD34D' : 'rgba(252, 211, 77, 0.2)',
+              background: ready ? 'var(--pc-state-warning)' : 'rgba(252, 211, 77, 0.2)',
               border: `1px solid ${tint}`,
-              color: ready ? '#03060c' : '#94A3B8',
+              color: ready ? '#03060c' : 'var(--pc-mission-text-faint)',
               letterSpacing: '0.25em',
               opacity: !ready || submitting ? 0.5 : 1,
               cursor: ready && !submitting ? 'pointer' : 'not-allowed',
@@ -1459,21 +1459,21 @@ function MissionBar({
       className="rounded border overflow-hidden"
       style={{
         background: 'rgba(8, 11, 18, 0.85)',
-        borderColor: 'rgba(125, 211, 252, 0.15)',
+        borderColor: 'rgba(var(--pc-mission-line-rgb), 0.15)',
         fontFamily: 'ui-monospace, monospace',
       }}
     >
       <div
         className="flex items-center gap-2 px-3 py-1.5 border-b text-[10px]"
         style={{
-          borderColor: 'rgba(125, 211, 252, 0.08)',
-          color: '#5BA8D9',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.08)',
+          color: 'var(--pc-mission-text-muted)',
           letterSpacing: '0.3em',
         }}
       >
         <Building2 className="h-3 w-3" />
         <span>MISSIONS · {tenants.length}</span>
-        <span className="ml-auto" style={{ color: '#94A3B8', letterSpacing: '0.1em' }}>
+        <span className="ml-auto" style={{ color: 'var(--pc-mission-text-faint)', letterSpacing: '0.1em' }}>
           click to switch · hover for edit/delete
         </span>
       </div>
@@ -1487,8 +1487,8 @@ function MissionBar({
               key={t.id}
               className="group relative shrink-0 inline-flex items-stretch rounded-sm border transition-colors"
               style={{
-                background: isActive ? cat.tint + '14' : 'rgba(3, 6, 12, 0.5)',
-                borderColor: isActive ? cat.tint : 'rgba(125, 211, 252, 0.15)',
+                background: isActive ? cat.tint + '14' : 'rgba(var(--pc-mission-bg-base-rgb), 0.5)',
+                borderColor: isActive ? cat.tint : 'rgba(var(--pc-mission-line-rgb), 0.15)',
                 borderLeft: `3px solid ${isActive ? cat.tint : 'transparent'}`,
               }}
             >
@@ -1518,7 +1518,7 @@ function MissionBar({
                   <div
                     className="text-[11px] leading-tight truncate"
                     style={{
-                      color: isActive ? '#E0F2FE' : '#BAE6FD',
+                      color: isActive ? 'var(--pc-mission-text-primary)' : 'var(--pc-mission-text-secondary)',
                       letterSpacing: '0.06em',
                       fontWeight: isActive ? 600 : 400,
                       maxWidth: 180,
@@ -1530,14 +1530,14 @@ function MissionBar({
                     <span style={{ color: cat.tint, letterSpacing: '0.2em' }}>
                       {cat.label}
                     </span>
-                    <span style={{ color: 'rgba(125, 211, 252, 0.25)' }}>·</span>
-                    <span style={{ color: '#94A3B8', letterSpacing: '0.15em' }}>
+                    <span style={{ color: 'rgba(var(--pc-mission-line-rgb), 0.25)' }}>·</span>
+                    <span style={{ color: 'var(--pc-mission-text-faint)', letterSpacing: '0.15em' }}>
                       {stage.label}
                     </span>
                     {t.activities && t.activities.length > 0 && (
                       <>
-                        <span style={{ color: 'rgba(125, 211, 252, 0.25)' }}>·</span>
-                        <span style={{ color: '#94A3B8' }}>
+                        <span style={{ color: 'rgba(var(--pc-mission-line-rgb), 0.25)' }}>·</span>
+                        <span style={{ color: 'var(--pc-mission-text-faint)' }}>
                           +{t.activities.length}
                         </span>
                       </>
@@ -1548,7 +1548,7 @@ function MissionBar({
               {/* Hover-revealed action icons */}
               <div
                 className="flex items-stretch opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ borderLeft: '1px solid rgba(125, 211, 252, 0.1)' }}
+                style={{ borderLeft: '1px solid rgba(var(--pc-mission-line-rgb), 0.1)' }}
               >
                 <button
                   type="button"
@@ -1557,7 +1557,7 @@ function MissionBar({
                     onEditTenant(t);
                   }}
                   className="px-2 flex items-center justify-center hover:bg-cyan-500/10"
-                  style={{ color: '#7DD3FC' }}
+                  style={{ color: 'var(--pc-mission-hub)' }}
                   title="Edit"
                 >
                   <Pencil className="h-3 w-3" />
@@ -1570,8 +1570,8 @@ function MissionBar({
                   }}
                   className="px-2 flex items-center justify-center hover:bg-red-500/10"
                   style={{
-                    color: '#F87171',
-                    borderLeft: '1px solid rgba(125, 211, 252, 0.08)',
+                    color: 'var(--pc-state-error)',
+                    borderLeft: '1px solid rgba(var(--pc-mission-line-rgb), 0.08)',
                   }}
                   title="Delete"
                 >
@@ -1587,10 +1587,10 @@ function MissionBar({
           onClick={onNewTenant}
           className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm border text-[10px]"
           style={{
-            background: 'rgba(125, 211, 252, 0.06)',
-            borderColor: 'rgba(125, 211, 252, 0.35)',
+            background: 'rgba(var(--pc-mission-line-rgb), 0.06)',
+            borderColor: 'rgba(var(--pc-mission-line-rgb), 0.35)',
             borderStyle: 'dashed',
-            color: '#7DD3FC',
+            color: 'var(--pc-mission-hub)',
             letterSpacing: '0.25em',
           }}
           title="Create a new mission"
@@ -1704,7 +1704,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: 'VALIDATE VENTURE',
     blurb: 'Triangulate against customers, competitors, failure modes',
     icon: CheckCircle2,
-    color: '#86EFAC',
+    color: 'var(--pc-state-done)',
     agents: ['phd_business', 'idea_validator', 'customer_researcher', 'competitor_analyst', 'red_teamer'],
     brief: (t, a) => BRIEFS.validate?.[a]?.(t) ?? '',
   },
@@ -1713,7 +1713,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: 'PRE-LAUNCH SENTIMENT',
     blurb: 'MiroFish swarm + go/no-go from sentiment + risks',
     icon: Radio,
-    color: '#7DD3FC',
+    color: 'var(--pc-mission-hub)',
     agents: ['market_sentiment_analyst', 'red_teamer', 'growth_hacker'],
     brief: (t, a) => BRIEFS.pre_launch?.[a]?.(t) ?? '',
   },
@@ -1722,7 +1722,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: 'CAPITAL PLAN',
     blurb: 'Stack the right capital + non-dilutive map',
     icon: Building2,
-    color: '#FCD34D',
+    color: 'var(--pc-state-warning)',
     agents: ['deeptech_financier', 'cfo_advisor', 'sovereign_advisor', 'latam_solar_ngo_counsel'],
     brief: (t, a) => BRIEFS.capital_plan?.[a]?.(t) ?? '',
   },
@@ -1731,7 +1731,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: 'RISK AUDIT',
     blurb: 'Reverse-engineer + name what the operator misses',
     icon: AlertCircle,
-    color: '#F87171',
+    color: 'var(--pc-state-error)',
     agents: ['forensic_auditor', 'red_teamer', 'risk_analyst', 'security'],
     brief: (t, a) => BRIEFS.risk_audit?.[a]?.(t) ?? '',
   },
@@ -1962,14 +1962,14 @@ function QuickActionsPanel({
   // (or amber when none) tints the bar so the operator's eye lands.
   const accent = tenant
     ? CATEGORY_META[tenant.category].tint
-    : '#FCD34D';
+    : 'var(--pc-state-warning)';
 
   return (
     <div
       className="rounded border overflow-hidden"
       style={{
         background:
-          'linear-gradient(180deg, rgba(12, 16, 24, 0.95), rgba(8, 11, 18, 0.92))',
+          'linear-gradient(180deg, rgba(var(--pc-mission-bg-panel-rgb), 0.95), rgba(8, 11, 18, 0.92))',
         borderColor: accent + '55',
         borderLeft: `4px solid ${accent}`,
         boxShadow: `inset 0 1px 0 ${accent}22`,
@@ -1980,7 +1980,7 @@ function QuickActionsPanel({
       <div
         className="flex items-center justify-between gap-3 px-4 py-3 border-b"
         style={{
-          borderColor: 'rgba(125, 211, 252, 0.1)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.1)',
           background: accent + '08',
         }}
       >
@@ -1990,7 +1990,7 @@ function QuickActionsPanel({
             style={{
               width: 36,
               height: 36,
-              background: 'rgba(3, 6, 12, 0.95)',
+              background: 'rgba(var(--pc-mission-bg-base-rgb), 0.95)',
               border: `2px solid ${accent}`,
             }}
           >
@@ -2010,7 +2010,7 @@ function QuickActionsPanel({
             <p
               className="text-base"
               style={{
-                color: '#E0F2FE',
+                color: 'var(--pc-mission-text-primary)',
                 letterSpacing: '0.12em',
                 fontWeight: 500,
                 lineHeight: 1.1,
@@ -2032,9 +2032,9 @@ function QuickActionsPanel({
               style={{
                 background: launchAllBusy
                   ? 'rgba(252, 211, 77, 0.18)'
-                  : '#FCD34D',
-                borderColor: '#FCD34D',
-                color: launchAllBusy ? '#FCD34D' : '#03060c',
+                  : 'var(--pc-state-warning)',
+                borderColor: 'var(--pc-state-warning)',
+                color: launchAllBusy ? 'var(--pc-state-warning)' : '#03060c',
                 letterSpacing: '0.25em',
                 fontWeight: 700,
                 fontSize: 12,
@@ -2074,7 +2074,7 @@ function QuickActionsPanel({
           style={{
             background: 'rgba(248, 113, 113, 0.08)',
             borderColor: 'rgba(248, 113, 113, 0.2)',
-            color: '#FCA5A5',
+            color: 'var(--pc-state-error-light)',
             letterSpacing: '0.05em',
           }}
         >
@@ -2088,7 +2088,7 @@ function QuickActionsPanel({
           style={{
             background: 'rgba(134, 239, 172, 0.08)',
             borderColor: 'rgba(134, 239, 172, 0.25)',
-            color: '#86EFAC',
+            color: 'var(--pc-state-done)',
             fontFamily: 'ui-monospace, monospace',
           }}
         >
@@ -2099,14 +2099,14 @@ function QuickActionsPanel({
               style={{ letterSpacing: '0.2em', fontWeight: 600 }}
             >
               {launchAllSummary.wiped > 0 && (
-                <span style={{ color: '#FCD34D' }}>
+                <span style={{ color: 'var(--pc-state-warning)' }}>
                   WIPED {launchAllSummary.wiped} FILES ·{' '}
                 </span>
               )}
               {launchAllSummary.fired} AGENTS FIRED ACROSS {launchAllSummary.sprints}{' '}
               SPRINTS
               {launchAllSummary.failed > 0 && (
-                <span style={{ color: '#FCA5A5' }}>
+                <span style={{ color: 'var(--pc-state-error-light)' }}>
                   {' '}· {launchAllSummary.failed} FAILED
                 </span>
               )}
@@ -2114,7 +2114,7 @@ function QuickActionsPanel({
             <p
               className="text-[9px] mt-0.5"
               style={{
-                color: '#94A3B8',
+                color: 'var(--pc-mission-text-faint)',
                 letterSpacing: '0.1em',
               }}
             >
@@ -2141,7 +2141,7 @@ function QuickActionsPanel({
         <div
           className="px-4 py-6 text-center"
           style={{
-            color: '#94A3B8',
+            color: 'var(--pc-mission-text-faint)',
             fontFamily: 'ui-monospace, monospace',
             letterSpacing: '0.05em',
             lineHeight: 1.6,
@@ -2161,7 +2161,7 @@ function QuickActionsPanel({
       ) : (
         <div
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px"
-          style={{ background: 'rgba(125, 211, 252, 0.06)' }}
+          style={{ background: 'rgba(var(--pc-mission-line-rgb), 0.06)' }}
         >
           {actions.map((a) => {
             const Icon = a.icon;
@@ -2180,7 +2180,7 @@ function QuickActionsPanel({
                 style={{
                   background: justDispatched
                     ? a.color + '1c'
-                    : 'rgba(3, 6, 12, 0.9)',
+                    : 'rgba(var(--pc-mission-bg-base-rgb), 0.9)',
                   borderLeft: `3px solid ${justDispatched ? a.color : a.color + '66'}`,
                   cursor: busy ? 'progress' : 'pointer',
                   opacity: dim ? 0.4 : 1,
@@ -2195,7 +2195,7 @@ function QuickActionsPanel({
                   <span
                     className="text-[12px]"
                     style={{
-                      color: justDispatched ? '#E0F2FE' : a.color,
+                      color: justDispatched ? 'var(--pc-mission-text-primary)' : a.color,
                       letterSpacing: '0.2em',
                       fontWeight: 600,
                     }}
@@ -2222,7 +2222,7 @@ function QuickActionsPanel({
                 <p
                   className="text-[11px] mb-1"
                   style={{
-                    color: '#94A3B8',
+                    color: 'var(--pc-mission-text-faint)',
                     letterSpacing: '0.04em',
                     lineHeight: 1.4,
                   }}
@@ -2279,7 +2279,7 @@ function CautionWarningStrip({
 
   const anyAlarm = sigLoss || errSev === 'red';
   const anyCaution = stale || errSev === 'amber' || queueHigh;
-  const masterColor = anyAlarm ? '#F87171' : anyCaution ? '#FCD34D' : '#1E293B';
+  const masterColor = anyAlarm ? 'var(--pc-state-error)' : anyCaution ? 'var(--pc-state-warning)' : '#1E293B';
   const masterActive = anyAlarm || anyCaution;
 
   return (
@@ -2287,7 +2287,7 @@ function CautionWarningStrip({
       className="rounded border overflow-hidden flex items-stretch text-[10px]"
       style={{
         background: 'rgba(8, 11, 18, 0.92)',
-        borderColor: masterActive ? masterColor + '55' : 'rgba(125, 211, 252, 0.12)',
+        borderColor: masterActive ? masterColor + '55' : 'rgba(var(--pc-mission-line-rgb), 0.12)',
         fontFamily: 'ui-monospace, monospace',
       }}
     >
@@ -2295,8 +2295,8 @@ function CautionWarningStrip({
       <div
         className="px-3 py-1.5 flex items-center gap-2 border-r"
         style={{
-          borderColor: 'rgba(125, 211, 252, 0.12)',
-          background: masterActive ? masterColor + '14' : 'rgba(125, 211, 252, 0.04)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.12)',
+          background: masterActive ? masterColor + '14' : 'rgba(var(--pc-mission-line-rgb), 0.04)',
         }}
       >
         <span
@@ -2309,7 +2309,7 @@ function CautionWarningStrip({
         />
         <span
           style={{
-            color: masterActive ? masterColor : '#5BA8D9',
+            color: masterActive ? masterColor : 'var(--pc-mission-text-muted)',
             letterSpacing: '0.3em',
             fontWeight: 600,
           }}
@@ -2362,17 +2362,17 @@ function CWLamp({
 }) {
   const color =
     severity === 'red'
-      ? '#F87171'
+      ? 'var(--pc-state-error)'
       : severity === 'amber'
-        ? '#FCD34D'
+        ? 'var(--pc-state-warning)'
         : 'rgba(91, 168, 217, 0.4)';
-  const textColor = severity === 'off' ? '#5BA8D9' : color;
+  const textColor = severity === 'off' ? 'var(--pc-mission-text-muted)' : color;
   const active = severity !== 'off';
   return (
     <div
       className="flex-1 min-w-[140px] px-3 py-1.5 flex items-center gap-2 border-r last:border-r-0"
       style={{
-        borderColor: 'rgba(125, 211, 252, 0.08)',
+        borderColor: 'rgba(var(--pc-mission-line-rgb), 0.08)',
         background: active ? color + '0d' : 'transparent',
       }}
     >
@@ -2392,7 +2392,7 @@ function CWLamp({
       <span style={{ color: textColor, letterSpacing: '0.25em', minWidth: 70 }}>
         {label}
       </span>
-      <span style={{ color: '#94A3B8', letterSpacing: '0.05em' }} className="truncate text-[9px]">
+      <span style={{ color: 'var(--pc-mission-text-faint)', letterSpacing: '0.05em' }} className="truncate text-[9px]">
         {detail}
       </span>
     </div>
@@ -2410,11 +2410,11 @@ function ClockReadout({
 }) {
   return (
     <div className="inline-flex items-center gap-1.5">
-      <span style={{ color: '#5BA8D9', letterSpacing: '0.3em' }}>{label}</span>
+      <span style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.3em' }}>{label}</span>
       <span
         className="tabular-nums"
         style={{
-          color: accent ? '#E0F2FE' : '#BAE6FD',
+          color: accent ? 'var(--pc-mission-text-primary)' : 'var(--pc-mission-text-secondary)',
           letterSpacing: '0.12em',
           fontWeight: accent ? 600 : 400,
         }}
@@ -2435,13 +2435,13 @@ function StatusLight({
   /** Override the GO colour — used by SIG to flash amber on stale */
   goColor?: string;
 }) {
-  const color = go ? (goColor ?? '#86EFAC') : 'rgba(91, 168, 217, 0.25)';
+  const color = go ? (goColor ?? 'var(--pc-state-done)') : 'rgba(91, 168, 217, 0.25)';
   return (
     <div
       className="inline-flex items-center gap-1 px-2 py-0.5"
       style={{
         background: go ? color + '15' : 'transparent',
-        borderRight: '1px solid rgba(125, 211, 252, 0.12)',
+        borderRight: '1px solid rgba(var(--pc-mission-line-rgb), 0.12)',
       }}
     >
       <span
@@ -2454,7 +2454,7 @@ function StatusLight({
       />
       <span
         style={{
-          color: go ? '#BAE6FD' : '#5BA8D9',
+          color: go ? 'var(--pc-mission-text-secondary)' : 'var(--pc-mission-text-muted)',
           letterSpacing: '0.25em',
           fontSize: 9,
         }}
@@ -2479,12 +2479,12 @@ function Stat({
   return (
     <div
       className="px-4 py-2"
-      style={{ background: 'rgba(3, 6, 12, 0.85)' }}
+      style={{ background: 'rgba(var(--pc-mission-bg-base-rgb), 0.85)' }}
     >
       <p
         className="text-[9px]"
         style={{
-          color: '#5BA8D9',
+          color: 'var(--pc-mission-text-muted)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.3em',
         }}
@@ -2494,7 +2494,7 @@ function Stat({
       <p
         className={mono ? 'text-xs truncate tabular-nums' : 'text-lg tabular-nums'}
         style={{
-          color: accent ? '#7DD3FC' : '#BAE6FD',
+          color: accent ? 'var(--pc-mission-hub)' : 'var(--pc-mission-text-secondary)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: mono ? '0.1em' : '0.05em',
           fontWeight: accent ? 600 : 400,
@@ -2512,7 +2512,7 @@ function StageMeter({ stage }: { stage: { label: string; ordinal: number } }) {
       <p
         className="text-[9px]"
         style={{
-          color: '#5BA8D9',
+          color: 'var(--pc-mission-text-muted)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.3em',
         }}
@@ -2526,8 +2526,8 @@ function StageMeter({ stage }: { stage: { label: string; ordinal: number } }) {
             style={{
               width: 8,
               height: 8,
-              background: i <= stage.ordinal ? '#7DD3FC' : 'rgba(91, 168, 217, 0.2)',
-              border: '1px solid rgba(125, 211, 252, 0.3)',
+              background: i <= stage.ordinal ? 'var(--pc-mission-hub)' : 'rgba(91, 168, 217, 0.2)',
+              border: '1px solid rgba(var(--pc-mission-line-rgb), 0.3)',
               imageRendering: 'pixelated',
             }}
           />
@@ -2704,8 +2704,8 @@ function ConstellationView({
         className="rounded border relative overflow-hidden"
         style={{
           background:
-            'radial-gradient(ellipse at center, rgba(15, 23, 42, 0.6) 0%, rgba(3, 6, 12, 0.95) 75%)',
-          borderColor: 'rgba(125, 211, 252, 0.18)',
+            'radial-gradient(ellipse at center, rgba(15, 23, 42, 0.6) 0%, rgba(var(--pc-mission-bg-base-rgb), 0.95) 75%)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.18)',
           minHeight: '640px',
           height: 'calc(100vh - 280px)',
         }}
@@ -2719,7 +2719,7 @@ function ConstellationView({
         >
           <defs>
             <radialGradient id="hubglow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#7DD3FC" stopOpacity="0.45" />
+              <stop offset="0%" stopColor="var(--pc-mission-hub)" stopOpacity="0.45" />
               <stop offset="60%" stopColor="#0EA5E9" stopOpacity="0.12" />
               <stop offset="100%" stopColor="#0EA5E9" stopOpacity="0" />
             </radialGradient>
@@ -2740,17 +2740,17 @@ function ConstellationView({
               cy={CV.CY}
               r={r}
               fill="none"
-              stroke="rgba(125, 211, 252, 0.06)"
+              stroke="rgba(var(--pc-mission-line-rgb), 0.06)"
               strokeWidth={1}
             />
           ))}
           <line
             x1={CV.CX} y1={50} x2={CV.CX} y2={CV.H - 50}
-            stroke="rgba(125, 211, 252, 0.04)" strokeWidth={1}
+            stroke="rgba(var(--pc-mission-line-rgb), 0.04)" strokeWidth={1}
           />
           <line
             x1={50} y1={CV.CY} x2={CV.W - 50} y2={CV.CY}
-            stroke="rgba(125, 211, 252, 0.04)" strokeWidth={1}
+            stroke="rgba(var(--pc-mission-line-rgb), 0.04)" strokeWidth={1}
           />
 
           {/* Tick marks every 10° on outer ring */}
@@ -2765,7 +2765,7 @@ function ConstellationView({
                 y1={CV.CY + Math.sin(a) * r1}
                 x2={CV.CX + Math.cos(a) * r2}
                 y2={CV.CY + Math.sin(a) * r2}
-                stroke="rgba(125, 211, 252, 0.15)"
+                stroke="rgba(var(--pc-mission-line-rgb), 0.15)"
                 strokeWidth={1}
               />
             );
@@ -2787,7 +2787,7 @@ function ConstellationView({
                 fontFamily="ui-monospace, monospace"
                 fontSize="9"
                 letterSpacing="1.5"
-                fill="rgba(125, 211, 252, 0.4)"
+                fill="rgba(var(--pc-mission-line-rgb), 0.4)"
               >
                 {deg.toString().padStart(3, '0')}
               </text>
@@ -2801,15 +2801,15 @@ function ConstellationView({
               Two layers: a soft 60° trail + a sharp leading edge. */}
           <defs>
             <linearGradient id="sweep-grad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#7DD3FC" stopOpacity="0.0" />
-              <stop offset="60%" stopColor="#7DD3FC" stopOpacity="0.10" />
-              <stop offset="95%" stopColor="#7DD3FC" stopOpacity="0.32" />
-              <stop offset="100%" stopColor="#BAE6FD" stopOpacity="0.55" />
+              <stop offset="0%" stopColor="var(--pc-mission-hub)" stopOpacity="0.0" />
+              <stop offset="60%" stopColor="var(--pc-mission-hub)" stopOpacity="0.10" />
+              <stop offset="95%" stopColor="var(--pc-mission-hub)" stopOpacity="0.32" />
+              <stop offset="100%" stopColor="var(--pc-mission-text-secondary)" stopOpacity="0.55" />
             </linearGradient>
             <radialGradient id="sweep-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#7DD3FC" stopOpacity="0.0" />
-              <stop offset="80%" stopColor="#7DD3FC" stopOpacity="0.0" />
-              <stop offset="100%" stopColor="#7DD3FC" stopOpacity="0.04" />
+              <stop offset="0%" stopColor="var(--pc-mission-hub)" stopOpacity="0.0" />
+              <stop offset="80%" stopColor="var(--pc-mission-hub)" stopOpacity="0.0" />
+              <stop offset="100%" stopColor="var(--pc-mission-hub)" stopOpacity="0.04" />
             </radialGradient>
           </defs>
           {/* Soft ambient halo (always visible) so the radar plane
@@ -2833,7 +2833,7 @@ function ConstellationView({
               y1={CV.CY}
               x2={CV.CX + 460}
               y2={CV.CY}
-              stroke="#BAE6FD"
+              stroke="var(--pc-mission-text-secondary)"
               strokeOpacity={0.55}
               strokeWidth={1.2}
             />
@@ -2860,7 +2860,7 @@ function ConstellationView({
                 y1={CV.CY + Math.sin(rad) * 130}
                 x2={CV.CX + Math.cos(rad) * 460}
                 y2={CV.CY + Math.sin(rad) * 460}
-                stroke="rgba(125, 211, 252, 0.05)"
+                stroke="rgba(var(--pc-mission-line-rgb), 0.05)"
                 strokeWidth={1}
                 strokeDasharray="2 4"
               />
@@ -2875,7 +2875,7 @@ function ConstellationView({
             const dim = tenant && !recSet.has(n.name);
             const isSel = selected === n.name;
             const lineColor = error
-              ? '#F87171'
+              ? 'var(--pc-state-error)'
               : running
                 ? n.dept.accent
                 : n.dept.accent;
@@ -2922,7 +2922,7 @@ function ConstellationView({
                   cx={x}
                   cy={y}
                   r={CV.DEPT_R}
-                  fill="rgba(3, 6, 12, 0.95)"
+                  fill="rgba(var(--pc-mission-bg-base-rgb), 0.95)"
                   stroke={d.dept.accent}
                   strokeOpacity={running ? 0.9 : 0.55}
                   strokeWidth={running ? 2 : 1.2}
@@ -2964,7 +2964,7 @@ function ConstellationView({
                   fontFamily="ui-monospace, monospace"
                   fontSize="8"
                   letterSpacing="1.5"
-                  fill="#94A3B8"
+                  fill="var(--pc-mission-text-faint)"
                 >
                   N={d.presentCount}
                 </text>
@@ -3013,11 +3013,11 @@ function ConstellationView({
             const isSel = selected === n.name;
             const ringColor =
               state === 'error'
-                ? '#F87171'
+                ? 'var(--pc-state-error)'
                 : state === 'running'
                   ? n.dept.accent
                   : state === 'done'
-                    ? '#86EFAC'
+                    ? 'var(--pc-state-done)'
                     : n.dept.accent;
             const running = state === 'running';
             return (
@@ -3074,7 +3074,7 @@ function ConstellationView({
                   cx={n.x}
                   cy={n.y}
                   r={CV.AGENT_R}
-                  fill={running ? `${ringColor}1c` : 'rgba(3, 6, 12, 0.95)'}
+                  fill={running ? `${ringColor}1c` : 'rgba(var(--pc-mission-bg-base-rgb), 0.95)'}
                   stroke={ringColor}
                   strokeOpacity={isSel ? 1 : running ? 0.95 : 0.45}
                   strokeWidth={isSel ? 2 : running ? 2.2 : 1}
@@ -3112,7 +3112,7 @@ function ConstellationView({
                   fontFamily="ui-monospace, monospace"
                   fontSize="9"
                   letterSpacing="0.5"
-                  fill={isSel ? '#E0F2FE' : state === 'running' ? '#BAE6FD' : '#94A3B8'}
+                  fill={isSel ? 'var(--pc-mission-text-primary)' : state === 'running' ? 'var(--pc-mission-text-secondary)' : 'var(--pc-mission-text-faint)'}
                 >
                   {n.name.length > 16 ? n.name.slice(0, 15) + '…' : n.name}
                 </text>
@@ -3147,8 +3147,8 @@ function ConstellationView({
             cx={CV.CX}
             cy={CV.CY}
             r={CV.HUB_R}
-            fill="rgba(3, 6, 12, 0.98)"
-            stroke="#7DD3FC"
+            fill="rgba(var(--pc-mission-bg-base-rgb), 0.98)"
+            stroke="var(--pc-mission-hub)"
             strokeOpacity="0.7"
             strokeWidth="1.5"
           />
@@ -3157,7 +3157,7 @@ function ConstellationView({
             cy={CV.CY}
             r={CV.HUB_R - 6}
             fill="none"
-            stroke="rgba(125, 211, 252, 0.4)"
+            stroke="rgba(var(--pc-mission-line-rgb), 0.4)"
             strokeWidth="1"
             strokeDasharray="2 3"
           />
@@ -3192,7 +3192,7 @@ function ConstellationView({
             fontSize="10"
             letterSpacing="2.5"
             fontWeight="600"
-            fill="#7DD3FC"
+            fill="var(--pc-mission-hub)"
           >
             ORCHESTRATOR
           </text>
@@ -3241,7 +3241,7 @@ function ConstellationView({
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'repeating-linear-gradient(0deg, rgba(125, 211, 252, 0.025) 0 1px, transparent 1px 3px)',
+              'repeating-linear-gradient(0deg, rgba(var(--pc-mission-line-rgb), 0.025) 0 1px, transparent 1px 3px)',
             mixBlendMode: 'overlay',
           }}
         />
@@ -3258,9 +3258,9 @@ function ConstellationView({
         <div
           className="absolute top-3 left-3 px-2.5 py-1.5 rounded-sm border text-[9px]"
           style={{
-            background: 'rgba(3, 6, 12, 0.85)',
-            borderColor: 'rgba(125, 211, 252, 0.25)',
-            color: '#5BA8D9',
+            background: 'rgba(var(--pc-mission-bg-base-rgb), 0.85)',
+            borderColor: 'rgba(var(--pc-mission-line-rgb), 0.25)',
+            color: 'var(--pc-mission-text-muted)',
             fontFamily: 'ui-monospace, monospace',
             letterSpacing: '0.25em',
           }}
@@ -3276,7 +3276,7 @@ function ConstellationView({
           <div
             className="rounded border"
             style={{
-              background: 'rgba(12, 16, 24, 0.85)',
+              background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.85)',
               borderColor: CATEGORY_META[tenant.category].tint + '55',
               borderLeft: `3px solid ${CATEGORY_META[tenant.category].tint}`,
             }}
@@ -3284,14 +3284,14 @@ function ConstellationView({
             <div
               className="px-3 py-2 border-b text-[10px] flex items-center justify-between"
               style={{
-                borderColor: 'rgba(125, 211, 252, 0.1)',
+                borderColor: 'rgba(var(--pc-mission-line-rgb), 0.1)',
                 color: CATEGORY_META[tenant.category].tint,
                 fontFamily: 'ui-monospace, monospace',
                 letterSpacing: '0.3em',
               }}
             >
               <span>MISSION BRIEF</span>
-              <span style={{ color: '#5BA8D9' }}>
+              <span style={{ color: 'var(--pc-mission-text-muted)' }}>
                 {STAGE_META[tenant.stage].label}
               </span>
             </div>
@@ -3300,7 +3300,7 @@ function ConstellationView({
                 <p
                   className="text-[11px] mb-2 italic"
                   style={{
-                    color: '#E0F2FE',
+                    color: 'var(--pc-mission-text-primary)',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.04em',
                     lineHeight: 1.4,
@@ -3354,17 +3354,17 @@ function ConstellationView({
         <ConsolePanel id="PNL-A" title="FLEET STATUS">
           <table className="w-full text-[10px] tabular-nums" style={{ fontFamily: 'ui-monospace, monospace' }}>
             <thead>
-              <tr style={{ color: '#5BA8D9' }}>
+              <tr style={{ color: 'var(--pc-mission-text-muted)' }}>
                 <th className="text-left px-3 py-1 font-normal" style={{ letterSpacing: '0.25em' }}>STATE</th>
                 <th className="text-right px-3 py-1 font-normal" style={{ letterSpacing: '0.25em' }}>COUNT</th>
                 <th className="text-right px-3 py-1 font-normal" style={{ letterSpacing: '0.25em' }}>BAR</th>
               </tr>
             </thead>
             <tbody>
-              <FleetRow label="IDLE" value={stateCounts.idle} total={agents.length} color="#5BA8D9" />
-              <FleetRow label="RUN " value={stateCounts.running} total={agents.length} color="#7DD3FC" pulse />
-              <FleetRow label="DONE" value={stateCounts.done} total={agents.length} color="#86EFAC" />
-              <FleetRow label="ERR " value={stateCounts.error} total={agents.length} color="#F87171" />
+              <FleetRow label="IDLE" value={stateCounts.idle} total={agents.length} color="var(--pc-mission-text-muted)" />
+              <FleetRow label="RUN " value={stateCounts.running} total={agents.length} color="var(--pc-mission-hub)" pulse />
+              <FleetRow label="DONE" value={stateCounts.done} total={agents.length} color="var(--pc-state-done)" />
+              <FleetRow label="ERR " value={stateCounts.error} total={agents.length} color="var(--pc-state-error)" />
             </tbody>
           </table>
         </ConsolePanel>
@@ -3388,7 +3388,7 @@ function ConstellationView({
             <p
               className="text-xs px-3 py-3"
               style={{
-                color: '#5BA8D9',
+                color: 'var(--pc-mission-text-muted)',
                 fontFamily: 'ui-monospace, monospace',
                 letterSpacing: '0.1em',
               }}
@@ -3406,22 +3406,22 @@ function ConstellationView({
         <div
           className="rounded border"
           style={{
-            background: 'rgba(12, 16, 24, 0.85)',
-            borderColor: 'rgba(125, 211, 252, 0.18)',
+            background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.85)',
+            borderColor: 'rgba(var(--pc-mission-line-rgb), 0.18)',
           }}
         >
           <div
             className="px-3 py-2 border-b text-[10px] flex items-center justify-between"
             style={{
-              borderColor: 'rgba(125, 211, 252, 0.1)',
+              borderColor: 'rgba(var(--pc-mission-line-rgb), 0.1)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.3em',
             }}
           >
-            <span className="flex items-center gap-1.5" style={{ color: '#5BA8D9' }}>
+            <span className="flex items-center gap-1.5" style={{ color: 'var(--pc-mission-text-muted)' }}>
               <Zap className="h-3 w-3" /> PNL-D · DOWNLINK
             </span>
-            <span style={{ color: '#94A3B8', fontSize: 9, letterSpacing: '0.15em' }}>
+            <span style={{ color: 'var(--pc-mission-text-faint)', fontSize: 9, letterSpacing: '0.15em' }}>
               S-BAND
             </span>
           </div>
@@ -3430,14 +3430,14 @@ function ConstellationView({
             style={{ fontFamily: 'ui-monospace, monospace' }}
           >
             {recentEvents.length === 0 ? (
-              <li className="px-3 py-3 text-center" style={{ color: '#5BA8D9', letterSpacing: '0.15em' }}>
+              <li className="px-3 py-3 text-center" style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.15em' }}>
                 — NO TRAFFIC —
               </li>
             ) : (
               recentEvents.map((e, i) => {
                 const isError = e.type === 'error' || e.success === false;
                 const isDone = e.type === 'agent_end' || (e.type === 'tool_call' && e.success !== false);
-                const color = isError ? '#F87171' : isDone ? '#86EFAC' : '#7DD3FC';
+                const color = isError ? 'var(--pc-state-error)' : isDone ? 'var(--pc-state-done)' : 'var(--pc-mission-hub)';
                 const target =
                   (e.target_agent as string | undefined) ??
                   (Array.isArray(e.target_agents)
@@ -3447,14 +3447,14 @@ function ConstellationView({
                   <li
                     key={i}
                     className="px-3 py-1.5 border-b last:border-0 flex gap-2 items-baseline"
-                    style={{ borderColor: 'rgba(125, 211, 252, 0.05)' }}
+                    style={{ borderColor: 'rgba(var(--pc-mission-line-rgb), 0.05)' }}
                   >
-                    <span style={{ color: '#5BA8D9' }}>{(e.timestamp ?? '').slice(11, 19)}</span>
+                    <span style={{ color: 'var(--pc-mission-text-muted)' }}>{(e.timestamp ?? '').slice(11, 19)}</span>
                     <span style={{ color, letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: 9 }}>
                       {e.type.replace('_', ' ')}
                     </span>
                     {target && (
-                      <span className="truncate" style={{ color: '#94A3B8' }}>
+                      <span className="truncate" style={{ color: 'var(--pc-mission-text-faint)' }}>
                         {target}
                       </span>
                     )}
@@ -3488,20 +3488,20 @@ function ConsolePanel({
     <div
       className="rounded border overflow-hidden"
       style={{
-        background: 'rgba(12, 16, 24, 0.85)',
-        borderColor: 'rgba(125, 211, 252, 0.18)',
+        background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.85)',
+        borderColor: 'rgba(var(--pc-mission-line-rgb), 0.18)',
       }}
     >
       <div
         className="px-3 py-2 border-b text-[10px] flex items-center justify-between"
         style={{
-          borderColor: 'rgba(125, 211, 252, 0.1)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.1)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.3em',
-          background: 'rgba(125, 211, 252, 0.04)',
+          background: 'rgba(var(--pc-mission-line-rgb), 0.04)',
         }}
       >
-        <span style={{ color: '#5BA8D9' }}>
+        <span style={{ color: 'var(--pc-mission-text-muted)' }}>
           {id} · {title}
         </span>
       </div>
@@ -3526,7 +3526,7 @@ function FleetRow({
   const pct = total > 0 ? (value / total) * 100 : 0;
   const active = value > 0;
   return (
-    <tr style={{ borderTop: '1px solid rgba(125, 211, 252, 0.05)' }}>
+    <tr style={{ borderTop: '1px solid rgba(var(--pc-mission-line-rgb), 0.05)' }}>
       <td className="px-3 py-1.5">
         <span className="inline-flex items-center gap-1.5">
           <span
@@ -3537,13 +3537,13 @@ function FleetRow({
               boxShadow: active ? `0 0 4px ${color}` : 'none',
             }}
           />
-          <span style={{ color: active ? color : '#94A3B8', letterSpacing: '0.2em' }}>{label}</span>
+          <span style={{ color: active ? color : 'var(--pc-mission-text-faint)', letterSpacing: '0.2em' }}>{label}</span>
         </span>
       </td>
       <td
         className="px-3 py-1.5 text-right tabular-nums"
         style={{
-          color: active ? color : '#5BA8D9',
+          color: active ? color : 'var(--pc-mission-text-muted)',
           fontWeight: active ? 600 : 400,
         }}
       >
@@ -3553,7 +3553,7 @@ function FleetRow({
         <div
           className="h-1.5 rounded-sm"
           style={{
-            background: 'rgba(125, 211, 252, 0.08)',
+            background: 'rgba(var(--pc-mission-line-rgb), 0.08)',
             position: 'relative',
             overflow: 'hidden',
           }}
@@ -3584,17 +3584,17 @@ function SubRow({
 }) {
   const color =
     status === 'go'
-      ? '#86EFAC'
+      ? 'var(--pc-state-done)'
       : status === 'amber'
-        ? '#FCD34D'
+        ? 'var(--pc-state-warning)'
         : status === 'red'
-          ? '#F87171'
+          ? 'var(--pc-state-error)'
           : status === 'info'
-            ? '#7DD3FC'
-            : '#5BA8D9';
+            ? 'var(--pc-mission-hub)'
+            : 'var(--pc-mission-text-muted)';
   const pulse = status === 'amber' || status === 'red';
   return (
-    <tr style={{ borderTop: '1px solid rgba(125, 211, 252, 0.05)' }}>
+    <tr style={{ borderTop: '1px solid rgba(var(--pc-mission-line-rgb), 0.05)' }}>
       <td className="px-3 py-1.5">
         <span className="inline-flex items-center gap-1.5">
           <span
@@ -3605,13 +3605,13 @@ function SubRow({
               boxShadow: status !== 'idle' ? `0 0 4px ${color}` : 'none',
             }}
           />
-          <span style={{ color: '#94A3B8', letterSpacing: '0.2em' }}>{label}</span>
+          <span style={{ color: 'var(--pc-mission-text-faint)', letterSpacing: '0.2em' }}>{label}</span>
         </span>
       </td>
       <td
         className="px-3 py-1.5 text-right tabular-nums"
         style={{
-          color: status === 'idle' ? '#5BA8D9' : color,
+          color: status === 'idle' ? 'var(--pc-mission-text-muted)' : color,
           letterSpacing: '0.1em',
           fontWeight: status === 'go' || status === 'red' ? 600 : 400,
         }}
@@ -3630,12 +3630,12 @@ function UnitInspector({
   activity: AgentActivity | null | undefined;
 }) {
   const labelStyle = {
-    color: '#5BA8D9',
+    color: 'var(--pc-mission-text-muted)',
     fontFamily: 'ui-monospace, monospace',
     letterSpacing: '0.2em',
   } as const;
   const valueStyle = {
-    color: '#BAE6FD',
+    color: 'var(--pc-mission-text-secondary)',
     fontFamily: 'ui-monospace, monospace',
     letterSpacing: '0.05em',
   } as const;
@@ -3646,8 +3646,8 @@ function UnitInspector({
           style={{
             width: 64,
             height: 64,
-            background: 'rgba(3, 6, 12, 0.9)',
-            border: '1px solid rgba(125, 211, 252, 0.3)',
+            background: 'rgba(var(--pc-mission-bg-base-rgb), 0.9)',
+            border: '1px solid rgba(var(--pc-mission-line-rgb), 0.3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -3730,9 +3730,9 @@ function UnitInspector({
                 key={tool}
                 className="text-[9px] px-1.5 py-0.5"
                 style={{
-                  background: 'rgba(125, 211, 252, 0.06)',
-                  border: '1px solid rgba(125, 211, 252, 0.18)',
-                  color: '#94A3B8',
+                  background: 'rgba(var(--pc-mission-line-rgb), 0.06)',
+                  border: '1px solid rgba(var(--pc-mission-line-rgb), 0.18)',
+                  color: 'var(--pc-mission-text-faint)',
                   fontFamily: 'ui-monospace, monospace',
                   letterSpacing: '0.04em',
                 }}
@@ -3745,7 +3745,7 @@ function UnitInspector({
               <span
                 className="text-[9px] px-1.5 py-0.5"
                 style={{
-                  color: '#5BA8D9',
+                  color: 'var(--pc-mission-text-muted)',
                   fontFamily: 'ui-monospace, monospace',
                   letterSpacing: '0.05em',
                 }}
@@ -3778,15 +3778,15 @@ function LiveView({
       <div
         className="rounded border overflow-hidden"
         style={{
-          background: 'rgba(12, 16, 24, 0.7)',
-          borderColor: 'rgba(125, 211, 252, 0.2)',
+          background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.7)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.2)',
         }}
       >
         <div
           className="px-4 py-3 border-b text-[10px]"
           style={{
-            borderColor: 'rgba(125, 211, 252, 0.12)',
-            color: '#5BA8D9',
+            borderColor: 'rgba(var(--pc-mission-line-rgb), 0.12)',
+            color: 'var(--pc-mission-text-muted)',
             fontFamily: 'ui-monospace, monospace',
             letterSpacing: '0.25em',
           }}
@@ -3803,7 +3803,7 @@ function LiveView({
           {recent.length === 0 ? (
             <div
               className="p-8 text-center"
-              style={{ color: '#5BA8D9', letterSpacing: '0.15em' }}
+              style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.15em' }}
             >
               NO EVENTS YET — DELEGATE FROM /AGENT
             </div>
@@ -3815,7 +3815,7 @@ function LiveView({
                   e.type === 'agent_end' ||
                   (e.type === 'tool_call' && e.success !== false);
                 const Icon = isError ? AlertCircle : isDone ? CheckCircle2 : Activity;
-                const color = isError ? '#F87171' : isDone ? '#86EFAC' : '#7DD3FC';
+                const color = isError ? 'var(--pc-state-error)' : isDone ? 'var(--pc-state-done)' : 'var(--pc-mission-hub)';
                 const target =
                   (e.target_agent as string | undefined) ??
                   (Array.isArray(e.target_agents)
@@ -3825,10 +3825,10 @@ function LiveView({
                   <li
                     key={i}
                     className="px-4 py-2 flex items-start gap-2.5 border-b last:border-0"
-                    style={{ borderColor: 'rgba(125, 211, 252, 0.05)' }}
+                    style={{ borderColor: 'rgba(var(--pc-mission-line-rgb), 0.05)' }}
                   >
                     <Icon className="h-3 w-3 mt-0.5 shrink-0" style={{ color }} />
-                    <span style={{ color: '#5BA8D9', minWidth: '60px' }}>
+                    <span style={{ color: 'var(--pc-mission-text-muted)', minWidth: '60px' }}>
                       {(e.timestamp ?? '').slice(11, 19)}
                     </span>
                     <span
@@ -3841,11 +3841,11 @@ function LiveView({
                     >
                       {e.type}
                     </span>
-                    <span className="truncate" style={{ color: '#BAE6FD' }}>
-                      {target && <span style={{ color: '#7DD3FC' }}>→ {target} </span>}
+                    <span className="truncate" style={{ color: 'var(--pc-mission-text-secondary)' }}>
+                      {target && <span style={{ color: 'var(--pc-mission-hub)' }}>→ {target} </span>}
                       {e.tool ?? e.model ?? e.message ?? e.component ?? ''}
                       {typeof e.duration_ms === 'number' && (
-                        <span style={{ color: '#5BA8D9' }}> · {e.duration_ms}ms</span>
+                        <span style={{ color: 'var(--pc-mission-text-muted)' }}> · {e.duration_ms}ms</span>
                       )}
                     </span>
                   </li>
@@ -3859,15 +3859,15 @@ function LiveView({
       <aside
         className="rounded border p-4 self-start space-y-4"
         style={{
-          background: 'rgba(12, 16, 24, 0.7)',
-          borderColor: 'rgba(125, 211, 252, 0.2)',
+          background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.7)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.2)',
         }}
       >
         <div>
           <p
             className="text-[10px] mb-3"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
@@ -3878,7 +3878,7 @@ function LiveView({
             <p
               className="text-xs"
               style={{
-                color: '#5BA8D9',
+                color: 'var(--pc-mission-text-muted)',
                 fontFamily: 'ui-monospace, monospace',
                 letterSpacing: '0.15em',
               }}
@@ -3892,7 +3892,7 @@ function LiveView({
                   key={a.name}
                   className="flex items-center gap-2 text-xs"
                   style={{
-                    color: '#BAE6FD',
+                    color: 'var(--pc-mission-text-secondary)',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.1em',
                   }}
@@ -3976,15 +3976,15 @@ function TimelineView({
     <div
       className="rounded border overflow-hidden"
       style={{
-        background: 'rgba(12, 16, 24, 0.7)',
-        borderColor: 'rgba(125, 211, 252, 0.2)',
+        background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.7)',
+        borderColor: 'rgba(var(--pc-mission-line-rgb), 0.2)',
       }}
     >
       <div
         className="px-4 py-3 border-b text-[10px]"
         style={{
-          borderColor: 'rgba(125, 211, 252, 0.12)',
-          color: '#5BA8D9',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.12)',
+          color: 'var(--pc-mission-text-muted)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.25em',
         }}
@@ -4008,9 +4008,9 @@ function TimelineView({
                   key={lane}
                   className="border-b last:border-0"
                   style={{
-                    borderColor: 'rgba(125, 211, 252, 0.05)',
+                    borderColor: 'rgba(var(--pc-mission-line-rgb), 0.05)',
                     background:
-                      idx % 2 === 0 ? 'rgba(125, 211, 252, 0.015)' : 'transparent',
+                      idx % 2 === 0 ? 'rgba(var(--pc-mission-line-rgb), 0.015)' : 'transparent',
                   }}
                 >
                   <td
@@ -4021,7 +4021,7 @@ function TimelineView({
                       <PixelSigil name={lane} size={14} state="idle" />
                       <span
                         style={{
-                          color: isOrch ? '#7DD3FC' : '#BAE6FD',
+                          color: isOrch ? 'var(--pc-mission-hub)' : 'var(--pc-mission-text-secondary)',
                           letterSpacing: '0.1em',
                           fontWeight: isOrch ? 600 : 400,
                         }}
@@ -4035,7 +4035,7 @@ function TimelineView({
                       className="absolute inset-y-2 left-2 right-2 rounded-sm"
                       style={{
                         background:
-                          'repeating-linear-gradient(90deg, transparent 0 8px, rgba(125, 211, 252, 0.06) 8px 9px)',
+                          'repeating-linear-gradient(90deg, transparent 0 8px, rgba(var(--pc-mission-line-rgb), 0.06) 8px 9px)',
                       }}
                     />
                     {laneRuns.map((r, i) => {
@@ -4052,11 +4052,11 @@ function TimelineView({
                             top: '6px',
                             bottom: '6px',
                             background: r.ok
-                              ? 'linear-gradient(180deg, rgba(125, 211, 252, 0.7), rgba(91, 168, 217, 0.5))'
+                              ? 'linear-gradient(180deg, rgba(var(--pc-mission-line-rgb), 0.7), rgba(91, 168, 217, 0.5))'
                               : 'linear-gradient(180deg, rgba(248, 113, 113, 0.7), rgba(190, 85, 85, 0.5))',
                             border: r.ok
-                              ? '1px solid #7DD3FC'
-                              : '1px solid #F87171',
+                              ? '1px solid var(--pc-mission-hub)'
+                              : '1px solid var(--pc-state-error)',
                             imageRendering: 'pixelated',
                           }}
                         />
@@ -4081,14 +4081,14 @@ function NoTenantBanner({ onCreate }: { onCreate: () => void }) {
       className="rounded border p-6 text-center"
       style={{
         background:
-          'radial-gradient(ellipse at center, rgba(125, 211, 252, 0.05) 0%, rgba(3, 6, 12, 0.9) 70%)',
-        borderColor: 'rgba(125, 211, 252, 0.2)',
+          'radial-gradient(ellipse at center, rgba(var(--pc-mission-line-rgb), 0.05) 0%, rgba(var(--pc-mission-bg-base-rgb), 0.9) 70%)',
+        borderColor: 'rgba(var(--pc-mission-line-rgb), 0.2)',
       }}
     >
       <p
         className="text-[10px] mb-2"
         style={{
-          color: '#5BA8D9',
+          color: 'var(--pc-mission-text-muted)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.4em',
         }}
@@ -4098,7 +4098,7 @@ function NoTenantBanner({ onCreate }: { onCreate: () => void }) {
       <p
         className="text-sm mb-4"
         style={{
-          color: '#BAE6FD',
+          color: 'var(--pc-mission-text-secondary)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.1em',
         }}
@@ -4109,9 +4109,9 @@ function NoTenantBanner({ onCreate }: { onCreate: () => void }) {
         onClick={onCreate}
         className="inline-flex items-center gap-2 px-4 py-2 rounded border text-xs"
         style={{
-          background: 'rgba(125, 211, 252, 0.1)',
-          borderColor: 'rgba(125, 211, 252, 0.5)',
-          color: '#7DD3FC',
+          background: 'rgba(var(--pc-mission-line-rgb), 0.1)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.5)',
+          color: 'var(--pc-mission-hub)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.2em',
         }}
@@ -4142,7 +4142,7 @@ const ACTIVITIES_META: Record<
   },
   government: {
     label: 'GOVERNMENT / SOVEREIGN',
-    tint: '#FDE68A',
+    tint: 'var(--pc-state-warning-light)',
     description:
       'Public-sector buyers, sovereign-fund pitches, multilateral procurement, regulated public contracts.',
     bench: ['sovereign_advisor', 'legal_compliance', 'security', 'fintech_counsel', 'risk_analyst'],
@@ -4290,7 +4290,7 @@ function TenantCreateModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(3, 6, 12, 0.92)' }}
+      style={{ background: 'rgba(var(--pc-mission-bg-base-rgb), 0.92)' }}
       onClick={onClose}
     >
       <form
@@ -4298,7 +4298,7 @@ function TenantCreateModal({
         onClick={(e) => e.stopPropagation()}
         className="rounded border p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-4"
         style={{
-          background: 'rgba(12, 16, 24, 0.95)',
+          background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.95)',
           borderColor: tint + '88',
           boxShadow: `inset 0 1px 0 ${tint}22`,
         }}
@@ -4306,7 +4306,7 @@ function TenantCreateModal({
         <p
           className="text-[10px]"
           style={{
-            color: '#5BA8D9',
+            color: 'var(--pc-mission-text-muted)',
             fontFamily: 'ui-monospace, monospace',
             letterSpacing: '0.4em',
           }}
@@ -4316,7 +4316,7 @@ function TenantCreateModal({
         <h2
           className="text-xl"
           style={{
-            color: '#BAE6FD',
+            color: 'var(--pc-mission-text-secondary)',
             fontFamily: 'ui-monospace, monospace',
             letterSpacing: '0.18em',
           }}
@@ -4328,7 +4328,7 @@ function TenantCreateModal({
           <label
             className="text-[10px] block mb-1"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
@@ -4343,9 +4343,9 @@ function TenantCreateModal({
             autoFocus
             className="w-full px-3 py-2 rounded text-sm"
             style={{
-              background: 'rgba(3, 6, 12, 0.7)',
-              border: '1px solid rgba(125, 211, 252, 0.3)',
-              color: '#BAE6FD',
+              background: 'rgba(var(--pc-mission-bg-base-rgb), 0.7)',
+              border: '1px solid rgba(var(--pc-mission-line-rgb), 0.3)',
+              color: 'var(--pc-mission-text-secondary)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.05em',
             }}
@@ -4356,7 +4356,7 @@ function TenantCreateModal({
           <label
             className="text-[10px] block mb-1"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
@@ -4374,11 +4374,11 @@ function TenantCreateModal({
                   onClick={() => setCategory(c)}
                   className="px-2 py-2 rounded text-[10px]"
                   style={{
-                    background: active ? meta.tint + '22' : 'rgba(3, 6, 12, 0.5)',
+                    background: active ? meta.tint + '22' : 'rgba(var(--pc-mission-bg-base-rgb), 0.5)',
                     border: active
                       ? `1px solid ${meta.tint}`
-                      : '1px solid rgba(125, 211, 252, 0.15)',
-                    color: active ? meta.tint : '#5BA8D9',
+                      : '1px solid rgba(var(--pc-mission-line-rgb), 0.15)',
+                    color: active ? meta.tint : 'var(--pc-mission-text-muted)',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.2em',
                   }}
@@ -4391,7 +4391,7 @@ function TenantCreateModal({
           <p
             className="text-[10px] mt-1.5"
             style={{
-              color: '#94A3B8',
+              color: 'var(--pc-mission-text-faint)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.05em',
             }}
@@ -4404,7 +4404,7 @@ function TenantCreateModal({
           <label
             className="text-[10px] block mb-1"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
@@ -4418,9 +4418,9 @@ function TenantCreateModal({
             placeholder="One-line positioning..."
             className="w-full px-3 py-2 rounded text-sm"
             style={{
-              background: 'rgba(3, 6, 12, 0.7)',
-              border: '1px solid rgba(125, 211, 252, 0.3)',
-              color: '#BAE6FD',
+              background: 'rgba(var(--pc-mission-bg-base-rgb), 0.7)',
+              border: '1px solid rgba(var(--pc-mission-line-rgb), 0.3)',
+              color: 'var(--pc-mission-text-secondary)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.05em',
             }}
@@ -4431,7 +4431,7 @@ function TenantCreateModal({
           <label
             className="text-[10px] block mb-1"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
@@ -4445,9 +4445,9 @@ function TenantCreateModal({
             rows={5}
             className="w-full px-3 py-2 rounded text-sm resize-y"
             style={{
-              background: 'rgba(3, 6, 12, 0.7)',
-              border: '1px solid rgba(125, 211, 252, 0.3)',
-              color: '#BAE6FD',
+              background: 'rgba(var(--pc-mission-bg-base-rgb), 0.7)',
+              border: '1px solid rgba(var(--pc-mission-line-rgb), 0.3)',
+              color: 'var(--pc-mission-text-secondary)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.04em',
               minHeight: 96,
@@ -4456,7 +4456,7 @@ function TenantCreateModal({
           <p
             className="text-[9px] mt-1"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.2em',
             }}
@@ -4469,7 +4469,7 @@ function TenantCreateModal({
           <label
             className="text-[10px] block mb-1"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
@@ -4487,11 +4487,11 @@ function TenantCreateModal({
                   onClick={() => setStage(s)}
                   className="px-2 py-1.5 rounded text-[9px]"
                   style={{
-                    background: active ? tint + '22' : 'rgba(3, 6, 12, 0.5)',
+                    background: active ? tint + '22' : 'rgba(var(--pc-mission-bg-base-rgb), 0.5)',
                     border: active
                       ? `1px solid ${tint}`
-                      : '1px solid rgba(125, 211, 252, 0.15)',
-                    color: active ? tint : '#5BA8D9',
+                      : '1px solid rgba(var(--pc-mission-line-rgb), 0.15)',
+                    color: active ? tint : 'var(--pc-mission-text-muted)',
                     fontFamily: 'ui-monospace, monospace',
                     letterSpacing: '0.2em',
                   }}
@@ -4507,7 +4507,7 @@ function TenantCreateModal({
           <label
             className="text-[10px] block mb-1"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
@@ -4525,10 +4525,10 @@ function TenantCreateModal({
                   onClick={() => toggleActivity(a)}
                   className="text-left p-2.5 rounded transition-colors"
                   style={{
-                    background: active ? meta.tint + '15' : 'rgba(3, 6, 12, 0.55)',
+                    background: active ? meta.tint + '15' : 'rgba(var(--pc-mission-bg-base-rgb), 0.55)',
                     border: active
                       ? `1px solid ${meta.tint}`
-                      : '1px solid rgba(125, 211, 252, 0.15)',
+                      : '1px solid rgba(var(--pc-mission-line-rgb), 0.15)',
                     fontFamily: 'ui-monospace, monospace',
                   }}
                 >
@@ -4537,14 +4537,14 @@ function TenantCreateModal({
                       className="inline-block h-2.5 w-2.5 rounded-sm shrink-0"
                       style={{
                         background: active ? meta.tint : 'transparent',
-                        border: `1px solid ${active ? meta.tint : 'rgba(125, 211, 252, 0.4)'}`,
+                        border: `1px solid ${active ? meta.tint : 'rgba(var(--pc-mission-line-rgb), 0.4)'}`,
                         boxShadow: active ? `0 0 5px ${meta.tint}66` : 'none',
                       }}
                     />
                     <span
                       className="text-[10px]"
                       style={{
-                        color: active ? meta.tint : '#94A3B8',
+                        color: active ? meta.tint : 'var(--pc-mission-text-faint)',
                         letterSpacing: '0.25em',
                         fontWeight: 600,
                       }}
@@ -4568,9 +4568,9 @@ function TenantCreateModal({
                         key={agentName}
                         className="text-[9px] px-1.5 py-0.5"
                         style={{
-                          color: active ? meta.tint : '#5BA8D9',
+                          color: active ? meta.tint : 'var(--pc-mission-text-muted)',
                           background: active ? meta.tint + '0d' : 'transparent',
-                          border: `1px solid ${active ? meta.tint + '55' : 'rgba(125, 211, 252, 0.15)'}`,
+                          border: `1px solid ${active ? meta.tint + '55' : 'rgba(var(--pc-mission-line-rgb), 0.15)'}`,
                           letterSpacing: '0.04em',
                         }}
                       >
@@ -4581,7 +4581,7 @@ function TenantCreateModal({
                       <span
                         className="text-[9px] px-1.5 py-0.5"
                         style={{
-                          color: '#5BA8D9',
+                          color: 'var(--pc-mission-text-muted)',
                           letterSpacing: '0.05em',
                         }}
                       >
@@ -4596,7 +4596,7 @@ function TenantCreateModal({
           <p
             className="text-[9px] mt-1.5"
             style={{
-              color: '#94A3B8',
+              color: 'var(--pc-mission-text-faint)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.05em',
             }}
@@ -4611,14 +4611,14 @@ function TenantCreateModal({
           <label
             className="text-[10px] block mb-1.5"
             style={{
-              color: '#5BA8D9',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
           >
             RECOMMENDED BENCH FOR {CATEGORY_META[category].label}
             {activities.length > 0 && (
-              <span style={{ color: '#94A3B8' }}>
+              <span style={{ color: 'var(--pc-mission-text-faint)' }}>
                 {' '}
                 + {activities.map((a) => ACTIVITIES_META[a].label.split(' ')[0]).join(' + ')}
               </span>
@@ -4644,7 +4644,7 @@ function TenantCreateModal({
           <p
             className="text-[9px] mt-1.5"
             style={{
-              color: '#94A3B8',
+              color: 'var(--pc-mission-text-faint)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.05em',
             }}
@@ -4657,7 +4657,7 @@ function TenantCreateModal({
           <p
             className="text-[11px]"
             style={{
-              color: '#F87171',
+              color: 'var(--pc-state-error)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.05em',
             }}
@@ -4673,8 +4673,8 @@ function TenantCreateModal({
             className="px-4 py-2 rounded text-[10px]"
             style={{
               background: 'transparent',
-              border: '1px solid rgba(125, 211, 252, 0.2)',
-              color: '#5BA8D9',
+              border: '1px solid rgba(var(--pc-mission-line-rgb), 0.2)',
+              color: 'var(--pc-mission-text-muted)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
             }}
@@ -4686,9 +4686,9 @@ function TenantCreateModal({
             disabled={submitting || !name.trim()}
             className="px-4 py-2 rounded text-[10px]"
             style={{
-              background: 'rgba(125, 211, 252, 0.15)',
-              border: '1px solid #7DD3FC',
-              color: '#BAE6FD',
+              background: 'rgba(var(--pc-mission-line-rgb), 0.15)',
+              border: '1px solid var(--pc-mission-hub)',
+              color: 'var(--pc-mission-text-secondary)',
               fontFamily: 'ui-monospace, monospace',
               letterSpacing: '0.25em',
               opacity: submitting || !name.trim() ? 0.5 : 1,
@@ -4860,8 +4860,8 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
       <aside
         className="rounded border overflow-hidden flex flex-col"
         style={{
-          background: 'rgba(12, 16, 24, 0.85)',
-          borderColor: 'rgba(125, 211, 252, 0.18)',
+          background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.85)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.18)',
           fontFamily: 'ui-monospace, monospace',
           maxHeight: 'calc(100vh - 360px)',
         }}
@@ -4869,10 +4869,10 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
         <div
           className="px-3 py-2 border-b text-[10px] flex items-center justify-between gap-2"
           style={{
-            borderColor: 'rgba(125, 211, 252, 0.1)',
-            color: '#5BA8D9',
+            borderColor: 'rgba(var(--pc-mission-line-rgb), 0.1)',
+            color: 'var(--pc-mission-text-muted)',
             letterSpacing: '0.3em',
-            background: 'rgba(125, 211, 252, 0.04)',
+            background: 'rgba(var(--pc-mission-line-rgb), 0.04)',
           }}
         >
           <span className="inline-flex items-center gap-1.5 min-w-0">
@@ -4886,8 +4886,8 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
             onClick={refresh}
             className="shrink-0 px-2 py-0.5 text-[9px] inline-flex items-center gap-1 rounded-sm border"
             style={{
-              borderColor: 'rgba(125, 211, 252, 0.3)',
-              color: '#7DD3FC',
+              borderColor: 'rgba(var(--pc-mission-line-rgb), 0.3)',
+              color: 'var(--pc-mission-hub)',
               letterSpacing: '0.2em',
             }}
             title="Reload tree"
@@ -4899,7 +4899,7 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
         {/* Filter pills */}
         <div
           className="flex gap-px text-[9px]"
-          style={{ background: 'rgba(125, 211, 252, 0.06)' }}
+          style={{ background: 'rgba(var(--pc-mission-line-rgb), 0.06)' }}
         >
           {(
             [
@@ -4918,12 +4918,12 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
                 className="flex-1 px-2 py-1.5 transition-colors"
                 style={{
                   background: active
-                    ? 'rgba(125, 211, 252, 0.14)'
-                    : 'rgba(3, 6, 12, 0.85)',
-                  color: active ? '#E0F2FE' : '#94A3B8',
+                    ? 'rgba(var(--pc-mission-line-rgb), 0.14)'
+                    : 'rgba(var(--pc-mission-bg-base-rgb), 0.85)',
+                  color: active ? 'var(--pc-mission-text-primary)' : 'var(--pc-mission-text-faint)',
                   letterSpacing: '0.25em',
                   fontWeight: active ? 600 : 400,
-                  borderBottom: active ? '2px solid #7DD3FC' : '2px solid transparent',
+                  borderBottom: active ? '2px solid var(--pc-mission-hub)' : '2px solid transparent',
                 }}
               >
                 {label} · {n}
@@ -4935,7 +4935,7 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
         {/* Body */}
         <div className="overflow-y-auto flex-1">
           {loading && (
-            <div className="px-3 py-6 text-center text-[10px]" style={{ color: '#5BA8D9' }}>
+            <div className="px-3 py-6 text-center text-[10px]" style={{ color: 'var(--pc-mission-text-muted)' }}>
               ▸ LOADING TREE…
             </div>
           )}
@@ -4945,7 +4945,7 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
               style={{
                 background: 'rgba(248, 113, 113, 0.08)',
                 borderColor: 'rgba(248, 113, 113, 0.25)',
-                color: '#FCA5A5',
+                color: 'var(--pc-state-error-light)',
               }}
             >
               ERR · {error}
@@ -4954,11 +4954,11 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
           {!loading && !error && tree && tree.agents.length === 0 && (
             <div
               className="px-3 py-6 text-center text-[10px]"
-              style={{ color: '#94A3B8', lineHeight: 1.6 }}
+              style={{ color: 'var(--pc-mission-text-faint)', lineHeight: 1.6 }}
             >
               NO ARTIFACTS YET
               <br />
-              <span style={{ color: '#5BA8D9' }}>
+              <span style={{ color: 'var(--pc-mission-text-muted)' }}>
                 deliverables appear here as agents call deliverable_write or file_write
                 under workspace/deliverables/
               </span>
@@ -4976,20 +4976,20 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
                   <li
                     key={a.agent}
                     className="border-b last:border-0"
-                    style={{ borderColor: 'rgba(125, 211, 252, 0.08)' }}
+                    style={{ borderColor: 'rgba(var(--pc-mission-line-rgb), 0.08)' }}
                   >
                     <div
                       className="px-3 py-1.5 flex items-center gap-2"
                       style={{
-                        background: 'rgba(125, 211, 252, 0.04)',
-                        color: '#7DD3FC',
+                        background: 'rgba(var(--pc-mission-line-rgb), 0.04)',
+                        color: 'var(--pc-mission-hub)',
                         letterSpacing: '0.2em',
                         fontWeight: 600,
                       }}
                     >
                       <PixelSigil name={a.agent} size={14} state="idle" />
                       <span className="flex-1 truncate">{a.agent}</span>
-                      <span style={{ color: '#94A3B8', fontWeight: 400 }}>
+                      <span style={{ color: 'var(--pc-mission-text-faint)', fontWeight: 400 }}>
                         {matched.length}
                       </span>
                     </div>
@@ -5004,10 +5004,10 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
                               className="w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors"
                               style={{
                                 background: isSel
-                                  ? 'rgba(125, 211, 252, 0.1)'
+                                  ? 'rgba(var(--pc-mission-line-rgb), 0.1)'
                                   : 'transparent',
-                                borderLeft: `2px solid ${isSel ? '#7DD3FC' : 'transparent'}`,
-                                color: isSel ? '#E0F2FE' : '#BAE6FD',
+                                borderLeft: `2px solid ${isSel ? 'var(--pc-mission-hub)' : 'transparent'}`,
+                                color: isSel ? 'var(--pc-mission-text-primary)' : 'var(--pc-mission-text-secondary)',
                               }}
                             >
                               {f.mime.startsWith('image/') ? (
@@ -5015,7 +5015,7 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
                               ) : (
                                 <FileText
                                   className="h-3 w-3 shrink-0"
-                                  style={{ color: '#7DD3FC' }}
+                                  style={{ color: 'var(--pc-mission-hub)' }}
                                 />
                               )}
                               <span className="flex-1 truncate" style={{ letterSpacing: '0.04em' }}>
@@ -5023,7 +5023,7 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
                               </span>
                               <span
                                 className="text-[8px]"
-                                style={{ color: '#5BA8D9', letterSpacing: '0.15em' }}
+                                style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.15em' }}
                               >
                                 {formatBytes(f.size_bytes)}
                               </span>
@@ -5050,8 +5050,8 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
       <div
         className="rounded border overflow-hidden flex flex-col"
         style={{
-          background: 'rgba(12, 16, 24, 0.7)',
-          borderColor: 'rgba(125, 211, 252, 0.18)',
+          background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.7)',
+          borderColor: 'rgba(var(--pc-mission-line-rgb), 0.18)',
           fontFamily: 'ui-monospace, monospace',
           minHeight: 480,
           maxHeight: 'calc(100vh - 360px)',
@@ -5060,17 +5060,17 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
         <div
           className="px-4 py-2 border-b text-[10px] flex items-center justify-between"
           style={{
-            borderColor: 'rgba(125, 211, 252, 0.1)',
-            color: '#5BA8D9',
+            borderColor: 'rgba(var(--pc-mission-line-rgb), 0.1)',
+            color: 'var(--pc-mission-text-muted)',
             letterSpacing: '0.3em',
-            background: 'rgba(125, 211, 252, 0.04)',
+            background: 'rgba(var(--pc-mission-line-rgb), 0.04)',
           }}
         >
           <span>
             VIEWER {selected ? `· ${selected}` : ''}
           </span>
           {content && (
-            <span style={{ color: '#94A3B8' }}>
+            <span style={{ color: 'var(--pc-mission-text-faint)' }}>
               {content.mime} · {formatBytes(content.size_bytes)}
               {content.truncated ? ' · TRUNCATED' : ''}
             </span>
@@ -5080,17 +5080,17 @@ function WorkbenchView({ events }: { events: SSEEvent[] }) {
           {!selected && (
             <div
               className="h-full flex items-center justify-center text-center text-[11px] p-8"
-              style={{ color: '#5BA8D9', letterSpacing: '0.15em' }}
+              style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.15em' }}
             >
               ▸ SELECT A FILE FROM THE TREE
               <br />
-              <span style={{ color: '#94A3B8', letterSpacing: '0.04em', marginTop: 8, display: 'block' }}>
+              <span style={{ color: 'var(--pc-mission-text-faint)', letterSpacing: '0.04em', marginTop: 8, display: 'block' }}>
                 Documents, images, JSON, CSV all render here
               </span>
             </div>
           )}
           {selected && contentLoading && (
-            <div className="p-8 text-[10px]" style={{ color: '#5BA8D9' }}>
+            <div className="p-8 text-[10px]" style={{ color: 'var(--pc-mission-text-muted)' }}>
               ▸ LOADING…
             </div>
           )}
@@ -5116,7 +5116,7 @@ function WorkbenchFileBody({ data }: { data: DeliverableReadResponse }) {
           style={{
             maxWidth: '100%',
             maxHeight: 'calc(100vh - 460px)',
-            border: '1px solid rgba(125, 211, 252, 0.2)',
+            border: '1px solid rgba(var(--pc-mission-line-rgb), 0.2)',
             borderRadius: 4,
           }}
         />
@@ -5134,7 +5134,7 @@ function WorkbenchFileBody({ data }: { data: DeliverableReadResponse }) {
       <pre
         className="p-4 text-[11px] tabular-nums whitespace-pre-wrap"
         style={{
-          color: '#BAE6FD',
+          color: 'var(--pc-mission-text-secondary)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.02em',
           lineHeight: 1.55,
@@ -5149,7 +5149,7 @@ function WorkbenchFileBody({ data }: { data: DeliverableReadResponse }) {
       <pre
         className="p-4 text-[11px] whitespace-pre-wrap"
         style={{
-          color: '#E0F2FE',
+          color: 'var(--pc-mission-text-primary)',
           fontFamily: 'ui-monospace, monospace',
           letterSpacing: '0.02em',
           lineHeight: 1.6,
@@ -5162,11 +5162,11 @@ function WorkbenchFileBody({ data }: { data: DeliverableReadResponse }) {
   return (
     <div
       className="p-8 text-[11px] text-center"
-      style={{ color: '#94A3B8', letterSpacing: '0.05em', lineHeight: 1.6 }}
+      style={{ color: 'var(--pc-mission-text-faint)', letterSpacing: '0.05em', lineHeight: 1.6 }}
     >
       Binary file ({data.mime}, {formatBytes(data.size_bytes)}). Inline preview
       not supported. Inspect via the host filesystem at{' '}
-      <code style={{ color: '#7DD3FC' }}>workspace/deliverables/{data.path}</code>.
+      <code style={{ color: 'var(--pc-mission-hub)' }}>workspace/deliverables/{data.path}</code>.
     </div>
   );
 }
@@ -5192,7 +5192,7 @@ function TenantDeleteConfirm({
   const [typed, setTyped] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tint = '#F87171';
+  const tint = 'var(--pc-state-error)';
   const ready = typed.trim() === tenant.id;
 
   const submit = async () => {
@@ -5210,14 +5210,14 @@ function TenantDeleteConfirm({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(3, 6, 12, 0.92)' }}
+      style={{ background: 'rgba(var(--pc-mission-bg-base-rgb), 0.92)' }}
       onClick={onCancel}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="rounded border p-6 w-full max-w-md space-y-4"
         style={{
-          background: 'rgba(12, 16, 24, 0.95)',
+          background: 'rgba(var(--pc-mission-bg-panel-rgb), 0.95)',
           borderColor: tint + '88',
           borderLeft: `3px solid ${tint}`,
           boxShadow: `inset 0 1px 0 ${tint}22`,
@@ -5231,7 +5231,7 @@ function TenantDeleteConfirm({
           <h2
             className="text-xl mt-1"
             style={{
-              color: '#FCA5A5',
+              color: 'var(--pc-state-error-light)',
               letterSpacing: '0.18em',
             }}
           >
@@ -5250,9 +5250,9 @@ function TenantDeleteConfirm({
             lineHeight: 1.5,
           }}
         >
-          <p className="font-bold mb-1" style={{ color: '#FCA5A5' }}>
+          <p className="font-bold mb-1" style={{ color: 'var(--pc-state-error-light)' }}>
             {tenant.name}
-            <span style={{ color: '#94A3B8', fontWeight: 'normal' }}> · {tenant.id}</span>
+            <span style={{ color: 'var(--pc-mission-text-faint)', fontWeight: 'normal' }}> · {tenant.id}</span>
           </p>
           <p>
             Removes the tenant from the registry. The agents' memory namespaces
@@ -5261,7 +5261,7 @@ function TenantDeleteConfirm({
             continue to exist.
           </p>
           {isActive && (
-            <p className="mt-2" style={{ color: '#FCD34D' }}>
+            <p className="mt-2" style={{ color: 'var(--pc-state-warning)' }}>
               ⚠ This is the currently ACTIVE tenant. The dashboard will
               auto-switch to another (or to none) after deletion.
             </p>
@@ -5271,7 +5271,7 @@ function TenantDeleteConfirm({
         <div>
           <label
             className="text-[10px] block mb-1"
-            style={{ color: '#5BA8D9', letterSpacing: '0.25em' }}
+            style={{ color: 'var(--pc-mission-text-muted)', letterSpacing: '0.25em' }}
           >
             TYPE <span style={{ color: tint }}>{tenant.id}</span> TO CONFIRM
           </label>
@@ -5283,16 +5283,16 @@ function TenantDeleteConfirm({
             autoFocus
             className="w-full px-3 py-2 rounded-sm text-sm tabular-nums"
             style={{
-              background: 'rgba(3, 6, 12, 0.7)',
-              border: `1px solid ${ready ? tint : 'rgba(125, 211, 252, 0.3)'}`,
-              color: ready ? '#FECACA' : '#BAE6FD',
+              background: 'rgba(var(--pc-mission-bg-base-rgb), 0.7)',
+              border: `1px solid ${ready ? tint : 'rgba(var(--pc-mission-line-rgb), 0.3)'}`,
+              color: ready ? '#FECACA' : 'var(--pc-mission-text-secondary)',
               letterSpacing: '0.06em',
             }}
           />
         </div>
 
         {error && (
-          <p className="text-[11px]" style={{ color: '#F87171', letterSpacing: '0.05em' }}>
+          <p className="text-[11px]" style={{ color: 'var(--pc-state-error)', letterSpacing: '0.05em' }}>
             ERR · {error}
           </p>
         )}
@@ -5305,8 +5305,8 @@ function TenantDeleteConfirm({
             className="px-4 py-2 rounded-sm text-[10px]"
             style={{
               background: 'transparent',
-              border: '1px solid rgba(125, 211, 252, 0.2)',
-              color: '#5BA8D9',
+              border: '1px solid rgba(var(--pc-mission-line-rgb), 0.2)',
+              color: 'var(--pc-mission-text-muted)',
               letterSpacing: '0.25em',
             }}
           >
@@ -5320,7 +5320,7 @@ function TenantDeleteConfirm({
             style={{
               background: ready ? 'rgba(248, 113, 113, 0.15)' : 'rgba(248, 113, 113, 0.05)',
               border: `1px solid ${ready ? tint : 'rgba(248, 113, 113, 0.2)'}`,
-              color: ready ? '#FECACA' : '#5BA8D9',
+              color: ready ? '#FECACA' : 'var(--pc-mission-text-muted)',
               letterSpacing: '0.25em',
               opacity: !ready || submitting ? 0.5 : 1,
               cursor: ready && !submitting ? 'pointer' : 'not-allowed',
