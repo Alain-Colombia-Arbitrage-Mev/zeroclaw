@@ -90,6 +90,7 @@ mod forensic_auditor;
 mod fundraise_captain;
 mod general_counsel;
 mod geospatial_analyst;
+mod ghostwriter;
 mod growth_hacker;
 mod idea_generator;
 mod idea_validator;
@@ -159,6 +160,7 @@ pub use self::forensic_auditor::forensic_auditor_preset;
 pub use self::fundraise_captain::fundraise_captain_preset;
 pub use self::general_counsel::general_counsel_preset;
 pub use self::geospatial_analyst::geospatial_analyst_preset;
+pub use self::ghostwriter::ghostwriter_preset;
 pub use self::growth_hacker::growth_hacker_preset;
 pub use self::idea_generator::idea_generator_preset;
 pub use self::idea_validator::idea_validator_preset;
@@ -234,6 +236,7 @@ mod tests {
                 business_developer_preset("openrouter", "x"),
             ),
             ("product_manager", product_manager_preset("openrouter", "x")),
+            ("ghostwriter", ghostwriter_preset("openrouter", "x")),
             ("growth_hacker", growth_hacker_preset("openrouter", "x")),
             (
                 "pricing_strategist",
