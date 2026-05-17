@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect, createContext, useContext, Component, type ReactNode, type ErrorInfo } from 'react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/layout/Layout';
+import { CommandPalette } from './components/CommandPalette';
 import Dashboard from './pages/Dashboard';
 import AgentChat from './pages/AgentChat';
 import Tools from './pages/Tools';
@@ -226,6 +227,7 @@ function AppContent() {
   return (
     <DraftContext.Provider value={draftStore}>
       <LocaleContext.Provider value={{ locale, setAppLocale }}>
+        <CommandPalette onLogout={logout} />
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
