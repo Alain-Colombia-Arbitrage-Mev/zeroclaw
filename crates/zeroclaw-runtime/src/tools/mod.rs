@@ -104,6 +104,7 @@ pub use zeroclaw_tools::sessions::{
 pub use zeroclaw_tools::swarm::SwarmTool;
 pub use zeroclaw_tools::text_browser::TextBrowserTool;
 pub use zeroclaw_tools::tool_search::ToolSearchTool;
+pub use zeroclaw_tools::wavespeed_tts::WaveSpeedTtsTool;
 pub use zeroclaw_tools::weather_tool::WeatherTool;
 pub use zeroclaw_tools::web_fetch::WebFetchTool;
 pub use zeroclaw_tools::web_search_tool::WebSearchTool;
@@ -663,6 +664,14 @@ pub fn all_tools_with_runtime(
             security.clone(),
             root_config.opencode_cli.clone(),
         )));
+    }
+
+    // WaveSpeed TTS tool
+    if root_config.wavespeed_tts.enabled {
+        match WaveSpeedTtsTool::new(security.clone(), root_config.wavespeed_tts.clone()) {
+            Ok(t) => tool_arcs.push(Arc::new(t)),
+            Err(e) => tracing::error!("Failed to build WaveSpeedTtsTool: {e:#}"),
+        }
     }
 
     // PDF extraction (feature-gated at compile time via rag-pdf)

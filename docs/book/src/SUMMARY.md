@@ -57,6 +57,7 @@
 - [Overview](./tools/overview.md)
 - [MCP (Model Context Protocol)](./tools/mcp.md)
 - [Browser automation](./tools/browser.md)
+- [WaveSpeed TTS](./tools/wavespeed-tts.md)
 
 # Security
 

@@ -66,6 +66,7 @@ pub mod sessions;
 pub mod swarm;
 pub mod text_browser;
 pub mod tool_search;
+pub mod wavespeed_tts;
 pub mod weather_tool;
 pub mod web_fetch;
 pub mod web_search_provider_routing;
