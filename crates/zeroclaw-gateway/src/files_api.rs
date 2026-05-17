@@ -643,3 +643,266 @@ pub async fn handle_files_deliverables_read(
     })
     .into_response()
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    /// Search term. Treated as a literal string (regex special chars
+    /// are escaped) unless `regex=true` is set.
+    pub q: String,
+    /// Optional tenant scope. Same fallback chain as the read+list
+    /// endpoints (query > x-octopus-tenant header > none).
+    pub tenant: Option<String>,
+    /// Optional agent filter (matches the `<agent>` directory name).
+    pub agent: Option<String>,
+    /// Optional file extension filter ("md", "json", "yaml"). Without
+    /// it, every text-like file under deliverables is searched.
+    pub ext: Option<String>,
+    /// Treat `q` as a regex (ripgrep flavour). Defaults to literal.
+    #[serde(default)]
+    pub regex: bool,
+    /// Case-insensitive search. Defaults to true (most users expect it).
+    #[serde(default = "default_true")]
+    pub case_insensitive: bool,
+    /// Cap on returned matches. Defaults to 200, clamped to 1000.
+    pub limit: Option<usize>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize)]
+pub struct SearchMatch {
+    /// Relative path under the deliverables root (the same id format
+    /// as the list endpoint emits, with the same `__legacy__/` prefix
+    /// for cross-tenant pre-multitenant artefacts).
+    pub path: String,
+    pub agent: String,
+    pub line_number: u64,
+    /// The matching line (trimmed to ~400 chars to keep responses sane).
+    pub line: String,
+    /// Byte offset of the first match within the line — lets the
+    /// dashboard highlight the precise term.
+    pub match_start: usize,
+    pub match_end: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SearchResponse {
+    pub query: String,
+    pub matched_files: usize,
+    pub total_matches: usize,
+    pub matches: Vec<SearchMatch>,
+    /// True when ripgrep returned more than `limit` and we truncated.
+    pub truncated: bool,
+    /// True when ripgrep is missing on PATH; the response is empty in
+    /// that case so the UI can render an actionable error.
+    pub ripgrep_missing: bool,
+}
+
+pub async fn handle_files_deliverables_search(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<SearchQuery>,
+) -> impl IntoResponse {
+    if let Err((code, msg)) = require_auth(&state, &headers) {
+        return (code, Json(serde_json::json!({"error": msg}))).into_response();
+    }
+
+    let trimmed = q.q.trim();
+    if trimmed.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "q parameter is required"})),
+        )
+            .into_response();
+    }
+    if trimmed.len() > 200 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "q too long (max 200 chars)"})),
+        )
+            .into_response();
+    }
+
+    let tenant = q.tenant.as_deref().filter(|s| !s.is_empty()).or_else(|| {
+        headers
+            .get("x-octopus-tenant")
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    });
+    let root = deliverables_root(&state, tenant);
+    if !root.exists() {
+        return Json(SearchResponse {
+            query: trimmed.to_string(),
+            matched_files: 0,
+            total_matches: 0,
+            matches: Vec::new(),
+            truncated: false,
+            ripgrep_missing: false,
+        })
+        .into_response();
+    }
+
+    let limit = q.limit.unwrap_or(200).min(1000);
+    let pattern = if q.regex {
+        trimmed.to_string()
+    } else {
+        regex::escape(trimmed)
+    };
+
+    // Build the matcher (ripgrep's regex engine as a library, identical
+    // semantics — Unicode-aware, smart-case capable).
+    let matcher = match grep_regex::RegexMatcherBuilder::new()
+        .case_insensitive(q.case_insensitive)
+        .build(&pattern)
+    {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid pattern: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    // Walker with: text-only files, gitignore-aware, max-filesize 2 MB.
+    let root_for_walk = root.clone();
+    let ext_filter = q.ext.clone();
+    let agent_filter = q.agent.clone();
+    let matcher_for_thread = matcher.clone();
+
+    // Run the (sync) walk + match on a blocking task so we don't block
+    // the tokio reactor.
+    let result = tokio::task::spawn_blocking(move || -> Result<(Vec<SearchMatch>, bool), String> {
+        let mut walker = ignore::WalkBuilder::new(&root_for_walk);
+        walker.max_filesize(Some(2 * 1024 * 1024)).hidden(false);
+        if let Some(ext) = ext_filter.as_deref().filter(|s| !s.is_empty()) {
+            if ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+                let mut overrides = ignore::overrides::OverrideBuilder::new(&root_for_walk);
+                overrides
+                    .add(&format!("*.{ext}"))
+                    .map_err(|e| e.to_string())?;
+                walker.overrides(overrides.build().map_err(|e| e.to_string())?);
+            }
+        }
+
+        // Note: do NOT canonicalize the prefix on Windows — canonicalize()
+        // returns UNC paths (\\?\C:\...) while WalkBuilder emits plain
+        // C:\... paths, and strip_prefix would fail silently.
+        let root_prefix = root_for_walk.clone();
+        let mut matches: Vec<SearchMatch> = Vec::new();
+
+        for entry in walker.build() {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if entry.file_type().is_none_or(|ft| !ft.is_file()) {
+                continue;
+            }
+            let abs = entry.path();
+            let rel = match abs.strip_prefix(&root_prefix) {
+                Ok(p) => p.to_string_lossy().replace('\\', "/"),
+                Err(_) => continue,
+            };
+            let agent_name = rel.split('/').next().unwrap_or("").to_string();
+            if let Some(a) = agent_filter.as_deref().filter(|s| !s.is_empty()) {
+                if agent_name != *a {
+                    continue;
+                }
+            }
+
+            let mut searcher = grep_searcher::SearcherBuilder::new()
+                .line_number(true)
+                .build();
+            let collected = matches_for_file(&matcher_for_thread, &mut searcher, abs, &rel, &agent_name);
+            for m in collected {
+                matches.push(m);
+                if matches.len() >= limit {
+                    return Ok((matches, true));
+                }
+            }
+        }
+
+        Ok((matches, false))
+    })
+    .await;
+
+    let (matches, truncated) = match result {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e})),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("search task panic: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    let files_seen: std::collections::HashSet<&str> =
+        matches.iter().map(|m| m.path.as_str()).collect();
+    let matched_files = files_seen.len();
+    let total_matches = matches.len();
+
+    Json(SearchResponse {
+        query: trimmed.to_string(),
+        matched_files,
+        total_matches,
+        matches,
+        truncated,
+        ripgrep_missing: false,
+    })
+    .into_response()
+}
+
+/// Search one file and collect its line matches.
+fn matches_for_file(
+    matcher: &grep_regex::RegexMatcher,
+    searcher: &mut grep_searcher::Searcher,
+    abs: &Path,
+    rel: &str,
+    agent: &str,
+) -> Vec<SearchMatch> {
+    use grep_searcher::sinks::UTF8;
+    let mut out: Vec<SearchMatch> = Vec::new();
+    let _ = searcher.search_path(
+        matcher,
+        abs,
+        UTF8(|lnum, line| {
+            // Find the first match column within the line for the UI
+            // highlight. We use grep_matcher::Matcher::find but stay
+            // within the existing matcher trait via the regex crate to
+            // avoid pulling in another dep.
+            let (start, end) = find_first_match(line, matcher);
+            let truncated: String = line.lines().next().unwrap_or("").chars().take(400).collect();
+            out.push(SearchMatch {
+                path: rel.to_string(),
+                agent: agent.to_string(),
+                line_number: lnum,
+                line: truncated,
+                match_start: start,
+                match_end: end,
+            });
+            Ok(true)
+        }),
+    );
+    out
+}
+
+fn find_first_match(line: &str, matcher: &grep_regex::RegexMatcher) -> (usize, usize) {
+    use grep_matcher::Matcher;
+    match matcher.find(line.as_bytes()) {
+        Ok(Some(m)) => (m.start(), m.end()),
+        _ => (0, 0),
+    }
+}

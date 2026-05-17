@@ -1168,6 +1168,10 @@ pub async fn run_gateway(
             "/api/files/deliverables/raw",
             get(files_api::handle_files_deliverables_read),
         )
+        .route(
+            "/api/files/deliverables/search",
+            get(files_api::handle_files_deliverables_search),
+        )
         // ── Live Canvas (A2UI) routes ──
         .route("/api/canvas", get(canvas::handle_canvas_list))
         .route(

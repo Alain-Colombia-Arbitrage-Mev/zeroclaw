@@ -80,7 +80,47 @@ URLs the search surfaces. Do not call `web_fetch` with guessed URLs. \
 call without polluting your own context. (4) Persist new findings via \
 `memory_store` so the next agent in the chain doesn't re-fetch. \
 Calling `web_fetch` before steps 1–2 is a smell — the answer is often \
-already in memory or the knowledge graph.";
+already in memory or the knowledge graph.\n\n\
+DELIVERABLE STRUCTURE — every document you write via \
+`deliverable_write` MUST follow this shape. No exceptions:\n\
+  1. **YAML frontmatter at the top** between `---` delimiters with \
+     these fields (omit only what genuinely doesn't apply):\n\
+       title: <one-line>\n\
+       status: draft | proposed | accepted | superseded\n\
+       owner_agent: <your-agent-name>\n\
+       contributing_agents: [<other-agents-you-delegated-to>]\n\
+       tags: [<3-6 short tags>]\n\
+       related_decisions: [<decision_log-ids>]\n\
+       related_deliverables: [<paths-to-other-deliverables>]\n\
+       created_at: <ISO-8601>\n\
+       next_review: <ISO-8601 or 'on-event:<trigger>'>\n\
+       kill_criteria: <one line: when does this plan die>\n\
+  2. **`# Title` H1 — exactly one. Then `## H2` for every numbered \
+     section, `### H3` for sub-sections.** Never produce a long \
+     document with only an H1 and flat numbered paragraphs.\n\
+  3. **Tables** when comparing 2+ options on 2+ dimensions. \
+     Markdown table syntax, not prose.\n\
+  4. **Checklists** with `- [ ]` for any action list the operator \
+     or another agent will execute. Never plain bullet `-` for \
+     actions.\n\
+  5. **Cross-references** as `[[other-deliverable-slug]]` for \
+     related deliverables and `<decision:DEC-2026-NNN>` for \
+     decision_log entries. The file explorer renders these as \
+     jump-links.\n\
+  6. **Mermaid diagrams** in fenced ```mermaid blocks when the \
+     output describes a flow, an architecture, a sequence, or a \
+     state machine. ASCII boxes are NOT acceptable when mermaid \
+     would render the same thing.\n\
+  7. **Math + valuations** in inline `$...$` or block `$$...$$` \
+     KaTeX. Currency calcs, dilution math, NPV, IRR, MOIC, payback \
+     period — these are math, not prose.\n\
+  8. **Kill criteria** as a final `## Falsification` section: \
+     2-5 specific signals that, if observed, end the plan / \
+     trigger replanning. Without this section the deliverable is \
+     not finished.\n\
+A document with H1-only, no frontmatter, no kill criteria is \
+half-done. The reviewer agent will reject it; rewrite before \
+calling `deliverable_write` a second time.";
 
 /// Context7 MCP tool names — `{server}__{tool}` format used by the
 /// MCP transport (`crates/zeroclaw-tools/src/mcp_client.rs`). The

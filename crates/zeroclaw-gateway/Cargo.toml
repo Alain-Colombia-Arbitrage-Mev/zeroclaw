@@ -34,6 +34,13 @@ tokio-rustls = { version = "0.26.4", default-features = false, features = ["logg
 # Frontend asset MIME type detection (dashboard served from filesystem)
 mime_guess = "2"
 
+# Native full-text search across deliverables (ripgrep engine as library)
+grep-regex = "0.1"
+grep-searcher = "0.1"
+grep-matcher = "0.1"
+ignore = "0.4"
+regex = "1"
+
 # Async runtime
 tokio = { version = "1.50", default-features = false, features = ["rt-multi-thread", "macros", "time", "net", "io-util", "sync", "signal"] }
 tokio-stream = { version = "0.1.18", default-features = false, features = ["sync"] }

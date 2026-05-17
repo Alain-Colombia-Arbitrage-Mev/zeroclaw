@@ -86,12 +86,20 @@ impl Tool for DeliverableWriteTool {
          analysis, or any structured output, persist it WITHOUT asking permission. \
          The operator wants the file landed; asking 'do you want this saved?' is a \
          smell. Just save it and report the path. \
+         MARKDOWN DELIVERABLES MUST include: (a) YAML frontmatter between `---` delimiters \
+         with title/status/owner_agent/contributing_agents/tags/related_decisions/created_at/\
+         next_review/kill_criteria, (b) `# Title` H1, (c) `## H2` sections for every numbered \
+         block, (d) tables for any comparison, (e) `- [ ]` checklists for actions, \
+         (f) `[[other-slug]]` cross-refs, (g) ```mermaid blocks for flows/architecture, \
+         (h) a `## Falsification` section with 2-5 kill criteria. The response will \
+         include a `warnings` array if any of these are missing — rewrite and re-save \
+         on the next turn instead of leaving structure-incomplete artefacts. \
          REQUIRED params: `slug` (kebab-case title, e.g. 'unicorn-roadmap'), \
          `filename` (with extension, e.g. 'roadmap.md'), `content` (the full file body). \
          OPTIONAL: `agent` (defaults to 'orchestrator' when called from top-level). \
          Files land at workspace/deliverables/<agent>/<YYYY-MM-DD>-<slug>/<filename>. \
          Sandboxed; never overwrites (auto-appends -N on collision). \
-         EXAMPLE call: {\"slug\":\"q3-launch-plan\", \"filename\":\"plan.md\", \"content\":\"# Plan...\\n\"}. \
+         EXAMPLE call: {\"slug\":\"q3-launch-plan\", \"filename\":\"plan.md\", \"content\":\"---\\ntitle: Q3 Launch Plan\\nstatus: proposed\\n...\\n---\\n\\n# Q3 Launch Plan\\n\\n## 1) Goals\\n...\"}. \
          Use this for memos, logframes, plans, governance docs, funder maps."
     }
 
@@ -301,19 +309,86 @@ impl Tool for DeliverableWriteTool {
         );
         let _ = append(&index_path, &line).await;
 
+        let warnings = structure_warnings(&ext, content);
+        let mut payload = json!({
+            "path": target.display().to_string(),
+            "relative": relative_target.display().to_string(),
+            "bytes": content.len(),
+            "agent": agent_slug,
+            "slug": work_slug,
+        });
+        if !warnings.is_empty() {
+            payload["warnings"] = json!(warnings);
+            payload["fix_hint"] = json!(
+                "Re-save with the missing structure on your next turn. The file is \
+                 already on disk; calling deliverable_write again with the corrected \
+                 content overwrites by adding -2/-3 etc., so include the version in \
+                 the slug (e.g. 'q3-launch-plan-v2') for a clean iteration trail."
+            );
+        }
+
         Ok(ToolResult {
             success: true,
-            output: json!({
-                "path": target.display().to_string(),
-                "relative": relative_target.display().to_string(),
-                "bytes": content.len(),
-                "agent": agent_slug,
-                "slug": work_slug,
-            })
-            .to_string(),
+            output: payload.to_string(),
             error: None,
         })
     }
+}
+
+/// Soft structure-quality checks for markdown deliverables. Returns
+/// the list of issues; never blocks the write. The agent sees the
+/// warnings in the tool result and learns to fix them next turn.
+fn structure_warnings(ext: &str, content: &str) -> Vec<String> {
+    if ext != "md" && ext != "markdown" {
+        return Vec::new();
+    }
+    let mut warns: Vec<String> = Vec::new();
+    let trimmed = content.trim_start();
+
+    if !trimmed.starts_with("---\n") && !trimmed.starts_with("---\r\n") {
+        warns.push(
+            "Missing YAML frontmatter. Start the file with `---` ... `---` containing \
+             title, status, owner_agent, contributing_agents, tags, related_decisions, \
+             created_at, next_review, kill_criteria."
+                .to_string(),
+        );
+    }
+
+    let h1_count = content.lines().filter(|l| l.starts_with("# ")).count();
+    let h2_count = content.lines().filter(|l| l.starts_with("## ")).count();
+    let line_count = content.lines().count();
+
+    if h1_count == 0 {
+        warns.push("Missing `# Title` H1 heading.".to_string());
+    } else if h1_count > 1 {
+        warns.push(format!(
+            "Found {h1_count} H1 headings — only one `# Title` per document; promote \
+             the rest to `## H2`."
+        ));
+    }
+
+    if line_count > 30 && h2_count == 0 {
+        warns.push(
+            "Long document with no `## H2` sections. Break the body into numbered \
+             `## 1) Section` blocks; flat numbered paragraphs under H1 are unreadable."
+                .to_string(),
+        );
+    }
+
+    let lower = content.to_lowercase();
+    if line_count > 40
+        && !lower.contains("## falsification")
+        && !lower.contains("## kill criteria")
+    {
+        warns.push(
+            "Missing `## Falsification` section. Add 2-5 specific signals that, if \
+             observed, end the plan or trigger replanning. Without it, the deliverable \
+             reads as opinion, not as a testable plan."
+                .to_string(),
+        );
+    }
+
+    warns
 }
 
 fn err(msg: String) -> ToolResult {
