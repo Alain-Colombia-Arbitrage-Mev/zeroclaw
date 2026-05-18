@@ -107,6 +107,7 @@ mod personal_brand_strategist;
 mod phd_business;
 mod pivot_strategist;
 mod planner;
+mod pmf_strategist;
 mod pricing_strategist;
 mod privacy_officer;
 mod product_manager;
@@ -176,6 +177,7 @@ pub use self::personal_brand_strategist::personal_brand_strategist_preset;
 pub use self::phd_business::phd_business_preset;
 pub use self::pivot_strategist::pivot_strategist_preset;
 pub use self::planner::planner_preset;
+pub use self::pmf_strategist::pmf_strategist_preset;
 pub use self::pricing_strategist::pricing_strategist_preset;
 pub use self::privacy_officer::privacy_officer_preset;
 pub use self::product_manager::product_manager_preset;
@@ -235,6 +237,10 @@ mod tests {
             ),
             ("product_manager", product_manager_preset("openrouter", "x")),
             ("growth_hacker", growth_hacker_preset("openrouter", "x")),
+            (
+                "pmf_strategist",
+                pmf_strategist_preset("openrouter", "x"),
+            ),
             (
                 "pricing_strategist",
                 pricing_strategist_preset("openrouter", "x"),
