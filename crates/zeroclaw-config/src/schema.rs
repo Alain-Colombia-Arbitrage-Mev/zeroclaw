@@ -458,6 +458,16 @@ pub struct Config {
     #[serde(default)]
     #[nested]
     pub shell_tool: ShellToolConfig,
+
+    /// Multi-tenant configuration (`[tenants]`).
+    /// Defines the set of tenant ids this daemon is willing to serve;
+    /// every gateway request must carry an `X-Octopus-Tenant` header
+    /// matching one of these or be rejected with HTTP 403. When the
+    /// `tenants` map is empty the daemon runs in single-tenant mode
+    /// and the header is optional.
+    #[serde(default)]
+    #[nested]
+    pub tenants: TenantsConfig,
 }
 
 /// Multi-client workspace isolation configuration.
@@ -524,6 +534,284 @@ impl Default for WorkspaceConfig {
             isolate_audit: true,
             cross_workspace_search: false,
         }
+    }
+}
+
+// ── Multi-tenant (`[tenants]`) ─────────────────────────────────────
+//
+// Operationally distinct from WorkspaceConfig:
+// - WorkspaceConfig switches the WHOLE daemon between named profiles
+//   (one client at a time). Used for solo operators who want client
+//   separation but only one active engagement.
+// - TenantsConfig serves MANY tenants from ONE running daemon
+//   concurrently. Each gateway request carries `X-Octopus-Tenant`;
+//   memory backends scope per-request via the `ACTIVE_TENANT`
+//   task-local. Used for SaaS-mode hosting where multiple companies
+//   share one ZeroClaw instance.
+//
+// Both can be enabled together but rarely need to be — usually the
+// operator picks one model.
+
+/// Top-level multi-tenant configuration (`[tenants]`).
+///
+/// The presence of any entry in `tenants` triggers strict mode:
+/// every request must carry a recognised `X-Octopus-Tenant` header,
+/// requests without the header (or with an unknown id) are rejected
+/// at the gateway with HTTP 403. Empty map = single-tenant mode,
+/// header optional, behavior unchanged from pre-multi-tenant.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "tenants"]
+pub struct TenantsConfig {
+    /// Map of tenant_id → per-tenant configuration. The KEY is what
+    /// the gateway matches against `X-Octopus-Tenant`. Slug rule:
+    /// `[a-z0-9_-]{1,64}`. Unknown ids are rejected.
+    ///
+    /// TOML example:
+    /// ```toml
+    /// [tenants.tenants.acme]
+    /// display_name = "ACME Corporation"
+    /// plan = "growth"
+    ///
+    /// [tenants.tenants.beta-co]
+    /// display_name = "Beta Co"
+    /// plan = "starter"
+    /// ```
+    #[serde(default)]
+    pub tenants: std::collections::HashMap<String, TenantConfig>,
+
+    /// Fallback tenant id when a channel can't determine which tenant
+    /// a message belongs to. `None` = no fallback; ambiguous messages
+    /// are dropped with a warning. Useful for single-tenant deployments
+    /// that still want the typed validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_tenant: Option<String>,
+
+    /// Reject requests whose `X-Octopus-Tenant` header is missing,
+    /// even when `default_tenant` is set. Off by default — header is
+    /// optional when default_tenant is set. Turn on for strict SaaS
+    /// mode where every client must self-identify.
+    #[serde(default)]
+    pub require_header: bool,
+}
+
+/// Per-tenant configuration entry (`[tenants.tenants.<id>]`).
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "tenants-entry"]
+pub struct TenantConfig {
+    /// Human-readable name for logs and operator UI.
+    #[serde(default)]
+    pub display_name: String,
+
+    /// Plan tier (`starter`, `growth`, `scale`, `custom`). Free-form
+    /// string interpreted by enforcement code, not by this struct.
+    /// Empty = no plan-level limits applied.
+    #[serde(default)]
+    pub plan: String,
+
+    /// Hard cap on monthly LLM spend in USD before the gateway
+    /// returns 402. `None` = no cap. Operator's responsibility to
+    /// match the cap to the plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monthly_usd_cap: Option<f64>,
+
+    /// Channels this tenant is allowed to use. Empty = all enabled
+    /// channels available. Specific entries: `"telegram"`,
+    /// `"whatsapp"`, `"slack"`, `"web"`, etc. Channels not in this
+    /// list reject inbound messages for this tenant.
+    #[serde(default)]
+    pub allowed_channels: Vec<String>,
+
+    /// Suspend the tenant — all incoming requests get HTTP 423.
+    /// Useful for billing failures or compliance holds without
+    /// deleting the tenant's state.
+    #[serde(default)]
+    pub suspended: bool,
+
+    /// Free-form notes the operator can attach (billing email,
+    /// support contact, contract id). Not interpreted by the
+    /// runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+impl Default for TenantConfig {
+    fn default() -> Self {
+        Self {
+            display_name: String::new(),
+            plan: String::new(),
+            monthly_usd_cap: None,
+            allowed_channels: Vec::new(),
+            suspended: false,
+            notes: None,
+        }
+    }
+}
+
+impl TenantsConfig {
+    /// True when multi-tenant strict mode is active (any tenants are
+    /// configured). When false, the gateway runs in single-tenant
+    /// mode and the `X-Octopus-Tenant` header is optional.
+    #[must_use]
+    pub fn is_strict_mode(&self) -> bool {
+        !self.tenants.is_empty()
+    }
+
+    /// True when the given tenant id is registered and not suspended.
+    /// Returns false for unknown ids and for known-but-suspended ids
+    /// alike — the gateway uses separate codes (403 vs 423) to
+    /// distinguish, but the configured-and-active question collapses
+    /// to one boolean here.
+    #[must_use]
+    pub fn is_active(&self, tenant_id: &str) -> bool {
+        self.tenants
+            .get(tenant_id)
+            .is_some_and(|t| !t.suspended)
+    }
+
+    /// Returns the per-tenant config or None if unknown. Suspension
+    /// state is on the entry itself for callers that want the full
+    /// rejection-reason distinction.
+    #[must_use]
+    pub fn get(&self, tenant_id: &str) -> Option<&TenantConfig> {
+        self.tenants.get(tenant_id)
+    }
+}
+
+/// Validates a tenant id slug against the canonical rule:
+/// 1-64 lowercase alphanumeric / underscore / dash. Same rule applied
+/// by `knowledge_graph_falkordb::is_valid_tenant_slug` and the
+/// gateway middleware.
+#[must_use]
+pub fn is_valid_tenant_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+}
+
+/// Outcome of validating an `X-Octopus-Tenant` header against the
+/// daemon's tenant configuration. Each variant maps to a specific
+/// HTTP response code the gateway should return.
+///
+/// Intent: every gateway entry point (WS connect, HTTP chat, files
+/// API, webhook receiver) calls `resolve_tenant` ONCE and matches on
+/// the result. That centralises the rejection logic so a future
+/// auditor can prove no endpoint accidentally serves cross-tenant
+/// traffic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TenantResolution {
+    /// Request accepted. The string is the validated tenant id that
+    /// downstream code should pass to `ACTIVE_TENANT.scope(...)`.
+    /// `None` means single-tenant mode is active and no scoping
+    /// needs to happen.
+    Accepted(Option<String>),
+
+    /// HTTP 400 — the header was present but malformed (failed the
+    /// slug rule). Don't echo the raw value back in the response —
+    /// it could be a crafted payload.
+    BadFormat,
+
+    /// HTTP 403 — the header was present, well-formed, but names a
+    /// tenant the daemon doesn't know about.
+    Unknown,
+
+    /// HTTP 423 — the tenant exists but is suspended. Distinct from
+    /// Unknown because the right operator action differs (billing
+    /// recovery vs investigating spoofed header).
+    Suspended,
+
+    /// HTTP 400 — strict mode is on but the request didn't supply
+    /// the header at all.
+    HeaderRequired,
+}
+
+impl TenantResolution {
+    /// The HTTP status code this resolution maps to.
+    #[must_use]
+    pub fn http_status(&self) -> u16 {
+        match self {
+            Self::Accepted(_) => 200,
+            Self::BadFormat => 400,
+            Self::Unknown => 403,
+            Self::Suspended => 423,
+            Self::HeaderRequired => 400,
+        }
+    }
+
+    /// Operator-safe error message — no echoing of the raw input.
+    /// The verbose details belong in server logs; client gets the
+    /// minimum needed to fix their request.
+    #[must_use]
+    pub fn message(&self) -> &'static str {
+        match self {
+            Self::Accepted(_) => "ok",
+            Self::BadFormat => "X-Octopus-Tenant must be 1-64 chars, lowercase alphanumeric, dash, or underscore",
+            Self::Unknown => "tenant not recognised",
+            Self::Suspended => "tenant suspended",
+            Self::HeaderRequired => "X-Octopus-Tenant header required",
+        }
+    }
+}
+
+/// Resolves an inbound `X-Octopus-Tenant` header (or absent header)
+/// against the daemon's tenant configuration. Pure function — no
+/// I/O, no logging — so endpoints can call it cheaply.
+///
+/// Single-tenant mode (`tenants` map is empty): the header is
+/// optional; when absent, returns `Accepted(None)`. When present
+/// and well-formed, the value is accepted as-is — useful when an
+/// operator turns on multi-tenant routing in code (`X-Octopus-Tenant`
+/// stamped on every memory write) without yet maintaining a
+/// `[tenants]` block.
+///
+/// Strict mode (`tenants` map has entries): the header is required
+/// unless `default_tenant` is set AND `require_header` is false.
+/// Unknown ids 403, suspended 423, malformed 400.
+#[must_use]
+pub fn resolve_tenant(
+    header_value: Option<&str>,
+    cfg: &TenantsConfig,
+) -> TenantResolution {
+    // Trim whitespace defensively — headers can arrive with quirks.
+    let header = header_value.map(str::trim).filter(|s| !s.is_empty());
+
+    if !cfg.is_strict_mode() {
+        // Single-tenant mode. Header optional; if present, must
+        // still be well-formed (defense against injection via a
+        // permissive deployment).
+        return match header {
+            None => TenantResolution::Accepted(None),
+            Some(h) if is_valid_tenant_id(h) => {
+                TenantResolution::Accepted(Some(h.to_string()))
+            }
+            Some(_) => TenantResolution::BadFormat,
+        };
+    }
+
+    // Strict mode from here.
+    match header {
+        None => {
+            // No header. Fall back to default_tenant ONLY when
+            // require_header is false; otherwise reject.
+            if cfg.require_header {
+                return TenantResolution::HeaderRequired;
+            }
+            match cfg.default_tenant.as_deref() {
+                Some(d) if cfg.is_active(d) => {
+                    TenantResolution::Accepted(Some(d.to_string()))
+                }
+                Some(d) if cfg.get(d).is_some() => TenantResolution::Suspended,
+                _ => TenantResolution::HeaderRequired,
+            }
+        }
+        Some(h) if !is_valid_tenant_id(h) => TenantResolution::BadFormat,
+        Some(h) => match cfg.get(h) {
+            None => TenantResolution::Unknown,
+            Some(entry) if entry.suspended => TenantResolution::Suspended,
+            Some(_) => TenantResolution::Accepted(Some(h.to_string())),
+        },
     }
 }
 
@@ -9451,6 +9739,7 @@ impl Default for Config {
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
+            tenants: TenantsConfig::default(),
         }
     }
 }
@@ -11515,6 +11804,278 @@ impl HasPropKind for serde_json::Value {
 }
 
 #[cfg(test)]
+mod tenancy_tests {
+    use super::{TenantConfig, TenantsConfig, is_valid_tenant_id};
+
+    #[test]
+    fn is_valid_tenant_id_accepts_canonical_forms() {
+        for ok in ["acme", "acme-corp", "tenant_1", "a", "x-y-z", "abc123"] {
+            assert!(is_valid_tenant_id(ok), "should accept: {ok}");
+        }
+    }
+
+    #[test]
+    fn is_valid_tenant_id_rejects_unsafe_forms() {
+        for bad in [
+            "",
+            "ACME",
+            "acme corp",
+            "acme;DROP",
+            "acme.com",
+            "acme/",
+            &"x".repeat(65),
+            "тест",
+        ] {
+            assert!(!is_valid_tenant_id(bad), "should reject: {bad}");
+        }
+    }
+
+    #[test]
+    fn is_strict_mode_off_when_no_tenants_configured() {
+        let cfg = TenantsConfig::default();
+        assert!(!cfg.is_strict_mode());
+    }
+
+    #[test]
+    fn is_strict_mode_on_when_any_tenant_configured() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert("acme".into(), TenantConfig::default());
+        assert!(cfg.is_strict_mode());
+    }
+
+    #[test]
+    fn is_active_returns_false_for_unknown_tenant() {
+        let cfg = TenantsConfig::default();
+        assert!(!cfg.is_active("anyone"));
+    }
+
+    #[test]
+    fn is_active_returns_true_for_known_active_tenant() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert("acme".into(), TenantConfig::default());
+        assert!(cfg.is_active("acme"));
+    }
+
+    #[test]
+    fn is_active_returns_false_for_suspended_tenant() {
+        // Suspended tenants collapse to !is_active even though the
+        // entry exists. The gateway uses 423 (Locked) vs 403
+        // (Forbidden) to distinguish; this helper just answers
+        // 'can we serve them now'.
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert(
+            "acme".into(),
+            TenantConfig {
+                suspended: true,
+                ..TenantConfig::default()
+            },
+        );
+        assert!(!cfg.is_active("acme"));
+    }
+
+    #[test]
+    fn get_returns_full_entry_so_callers_can_distinguish_suspended_from_unknown() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert(
+            "acme".into(),
+            TenantConfig {
+                suspended: true,
+                display_name: "ACME Corp".into(),
+                ..TenantConfig::default()
+            },
+        );
+        let entry = cfg.get("acme").expect("known tenant must resolve");
+        assert!(entry.suspended);
+        assert_eq!(entry.display_name, "ACME Corp");
+        assert!(cfg.get("unknown").is_none());
+    }
+
+    #[test]
+    fn tenant_config_default_is_inert() {
+        let t = TenantConfig::default();
+        assert!(t.display_name.is_empty());
+        assert!(t.plan.is_empty());
+        assert!(t.monthly_usd_cap.is_none());
+        assert!(t.allowed_channels.is_empty());
+        assert!(!t.suspended);
+        assert!(t.notes.is_none());
+    }
+
+    use super::{TenantResolution, resolve_tenant};
+
+    #[test]
+    fn resolve_tenant_single_tenant_mode_no_header_accepts_none() {
+        let cfg = TenantsConfig::default();
+        assert_eq!(resolve_tenant(None, &cfg), TenantResolution::Accepted(None));
+    }
+
+    #[test]
+    fn resolve_tenant_single_tenant_mode_with_well_formed_header_accepts() {
+        let cfg = TenantsConfig::default();
+        assert_eq!(
+            resolve_tenant(Some("acme"), &cfg),
+            TenantResolution::Accepted(Some("acme".into()))
+        );
+    }
+
+    #[test]
+    fn resolve_tenant_single_tenant_mode_rejects_malformed_header() {
+        // Even in permissive mode, an injection-style header must
+        // not be propagated as a tenant id.
+        let cfg = TenantsConfig::default();
+        assert_eq!(
+            resolve_tenant(Some("acme;DROP"), &cfg),
+            TenantResolution::BadFormat
+        );
+    }
+
+    #[test]
+    fn resolve_tenant_strict_mode_unknown_id_403() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert("acme".into(), TenantConfig::default());
+        assert_eq!(
+            resolve_tenant(Some("not-acme"), &cfg),
+            TenantResolution::Unknown
+        );
+        assert_eq!(TenantResolution::Unknown.http_status(), 403);
+    }
+
+    #[test]
+    fn resolve_tenant_strict_mode_suspended_id_423() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert(
+            "acme".into(),
+            TenantConfig {
+                suspended: true,
+                ..TenantConfig::default()
+            },
+        );
+        assert_eq!(
+            resolve_tenant(Some("acme"), &cfg),
+            TenantResolution::Suspended
+        );
+        assert_eq!(TenantResolution::Suspended.http_status(), 423);
+    }
+
+    #[test]
+    fn resolve_tenant_strict_mode_known_id_accepted() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert("acme".into(), TenantConfig::default());
+        assert_eq!(
+            resolve_tenant(Some("acme"), &cfg),
+            TenantResolution::Accepted(Some("acme".into()))
+        );
+    }
+
+    #[test]
+    fn resolve_tenant_strict_mode_missing_header_when_required_400() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert("acme".into(), TenantConfig::default());
+        cfg.require_header = true;
+        assert_eq!(resolve_tenant(None, &cfg), TenantResolution::HeaderRequired);
+    }
+
+    #[test]
+    fn resolve_tenant_strict_mode_missing_header_falls_back_to_default_when_allowed() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert("acme".into(), TenantConfig::default());
+        cfg.default_tenant = Some("acme".into());
+        cfg.require_header = false;
+        assert_eq!(
+            resolve_tenant(None, &cfg),
+            TenantResolution::Accepted(Some("acme".into()))
+        );
+    }
+
+    #[test]
+    fn resolve_tenant_default_tenant_suspended_returns_suspended_not_silent_pass() {
+        // Edge case: operator pinned a default tenant then suspended
+        // it. Returning Accepted would route traffic to a paused
+        // tenant; correct behavior is Suspended.
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert(
+            "acme".into(),
+            TenantConfig {
+                suspended: true,
+                ..TenantConfig::default()
+            },
+        );
+        cfg.default_tenant = Some("acme".into());
+        assert_eq!(resolve_tenant(None, &cfg), TenantResolution::Suspended);
+    }
+
+    #[test]
+    fn resolve_tenant_strict_mode_bad_format_400() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert("acme".into(), TenantConfig::default());
+        assert_eq!(
+            resolve_tenant(Some("ACME"), &cfg),
+            TenantResolution::BadFormat
+        );
+        assert_eq!(TenantResolution::BadFormat.http_status(), 400);
+    }
+
+    #[test]
+    fn resolve_tenant_trims_whitespace_before_validation() {
+        // Headers can arrive with stray whitespace via certain
+        // proxies; trim defensively.
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert("acme".into(), TenantConfig::default());
+        assert_eq!(
+            resolve_tenant(Some("  acme  "), &cfg),
+            TenantResolution::Accepted(Some("acme".into()))
+        );
+    }
+
+    #[test]
+    fn resolve_tenant_treats_empty_string_header_as_no_header() {
+        // A literal empty header value collapses to None semantics.
+        let cfg = TenantsConfig::default();
+        assert_eq!(resolve_tenant(Some(""), &cfg), TenantResolution::Accepted(None));
+    }
+
+    #[test]
+    fn tenant_resolution_messages_do_not_echo_user_input() {
+        // Defense-in-depth: error messages must be operator-safe.
+        // None of them should contain interpolated tenant strings
+        // from the request, which could be a crafted payload.
+        for r in [
+            TenantResolution::BadFormat,
+            TenantResolution::Unknown,
+            TenantResolution::Suspended,
+            TenantResolution::HeaderRequired,
+        ] {
+            // Message is &'static str — by construction can't contain
+            // request-derived strings. Assert it's non-empty.
+            assert!(!r.message().is_empty());
+        }
+    }
+
+    #[test]
+    fn tenants_config_serialises_round_trip() {
+        let mut cfg = TenantsConfig::default();
+        cfg.tenants.insert(
+            "acme".into(),
+            TenantConfig {
+                display_name: "ACME Corporation".into(),
+                plan: "growth".into(),
+                monthly_usd_cap: Some(500.0),
+                allowed_channels: vec!["telegram".into(), "whatsapp".into()],
+                suspended: false,
+                notes: Some("billing@acme.example".into()),
+            },
+        );
+        let toml = toml::to_string(&cfg).expect("must serialise");
+        let parsed: TenantsConfig = toml::from_str(&toml).expect("must deserialise");
+        assert!(parsed.is_strict_mode());
+        let acme = parsed.get("acme").expect("acme must survive round-trip");
+        assert_eq!(acme.plan, "growth");
+        assert_eq!(acme.monthly_usd_cap, Some(500.0));
+        assert_eq!(acme.allowed_channels.len(), 2);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::io;
@@ -12140,6 +12701,7 @@ auto_save = true
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
+            tenants: TenantsConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
         // Provider fields are now resolved directly — no cache needed.
@@ -12709,6 +13271,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            tenants: TenantsConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };

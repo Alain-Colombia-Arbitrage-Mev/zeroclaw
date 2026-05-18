@@ -868,7 +868,6 @@ mod tests {
             session_id: Some("session-1".into()),
             tenant_id: None,
             agent_id: None,
-        tier: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -887,7 +886,6 @@ mod tests {
             session_id: None,
             tenant_id: None,
             agent_id: None,
-        tier: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();

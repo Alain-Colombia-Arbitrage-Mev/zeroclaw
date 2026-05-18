@@ -45,22 +45,33 @@ use uuid::Uuid;
 
 /// FalkorDB-backed knowledge graph.
 ///
-/// Each instance owns one FalkorDB graph (named via `graph_name`) and a
-/// shared async Redis connection. The connection is wrapped in a Mutex
-/// because `redis::aio::ConnectionManager::send_packed_command` takes
-/// `&mut self` — we serialise queries per-instance, which is fine for
-/// the agent's typical access pattern (≤10 reads/writes per turn).
+/// Each instance is configured with a BASE `graph_name`. At query time
+/// the effective graph name is composed with the active tenant id
+/// (from the `ACTIVE_TENANT` task-local) so two tenants sharing the
+/// same Redis instance see fully isolated graphs:
+///
+///   - tenant unset → graph = `<base>` (single-tenant / default)
+///   - tenant = "acme" → graph = `<base>_acme`
+///
+/// Bootstrapping (`CREATE INDEX`) runs on the base graph only — every
+/// tenant's first write auto-creates its tenant-scoped graph in
+/// FalkorDB, and indices propagate on first use. The connection is
+/// wrapped in a Mutex because `redis::aio::ConnectionManager::
+/// send_packed_command` takes `&mut self` — we serialise queries
+/// per-instance, which is fine for the agent's typical access pattern
+/// (≤10 reads/writes per turn).
 pub struct FalkorDbKnowledgeGraph {
     conn: Arc<Mutex<ConnectionManager>>,
-    graph_name: String,
+    base_graph_name: String,
 }
 
 impl FalkorDbKnowledgeGraph {
     /// Connect to FalkorDB at `redis_url` (e.g. `redis://localhost:6379`).
     ///
-    /// `graph_name` becomes the first argument to every `GRAPH.QUERY`
-    /// call. Multiple instances pointing at the same Redis but different
-    /// graph names are safely isolated by FalkorDB.
+    /// `graph_name` is the BASE name; the effective name per query is
+    /// composed with the active tenant id from `ACTIVE_TENANT`. Two
+    /// tenants sharing the same FalkorDB Redis instance see completely
+    /// disjoint graphs without any explicit per-tenant connect call.
     pub async fn connect(redis_url: &str, graph_name: &str) -> Result<Self> {
         let client =
             redis::Client::open(redis_url).context("Failed to parse FalkorDB connection URL")?;
@@ -69,13 +80,40 @@ impl FalkorDbKnowledgeGraph {
             .context("Failed to open Redis connection to FalkorDB")?;
         let kg = Self {
             conn: Arc::new(Mutex::new(conn)),
-            graph_name: graph_name.to_string(),
+            base_graph_name: graph_name.to_string(),
         };
         // Best-effort schema bootstrap — FalkorDB is schemaless but we
         // create indices on `id` and `tags` so the queries below stay
-        // O(log n) even at scale.
+        // O(log n) even at scale. Bootstrap targets the base graph;
+        // tenant graphs auto-create on first write.
         kg.bootstrap().await?;
         Ok(kg)
+    }
+
+    /// Resolves the effective graph name for the current task by
+    /// composing the base name with the active tenant id, if any.
+    ///
+    /// Safe to call from any async context — when the task-local is
+    /// not set (CLI runs, cron jobs, tests outside `ACTIVE_TENANT.scope`),
+    /// returns the bare base name so single-tenant operation is
+    /// unaffected.
+    fn effective_graph_name(&self) -> String {
+        let tenant = crate::qdrant::ACTIVE_TENANT
+            .try_with(|t| t.clone())
+            .ok()
+            .flatten();
+        match tenant {
+            Some(t) if is_valid_tenant_slug(&t) => {
+                format!("{}_{}", self.base_graph_name, t)
+            }
+            // Empty string or invalid slug → fall back to base.
+            // An invalid slug at this layer would be a bug (gateway
+            // is supposed to validate before scoping), but defaulting
+            // to base is the safe failure: worst case a misrouted
+            // request lands on the shared graph, NOT on a victim
+            // tenant's graph.
+            _ => self.base_graph_name.clone(),
+        }
     }
 
     async fn bootstrap(&self) -> Result<()> {
@@ -91,9 +129,10 @@ impl FalkorDbKnowledgeGraph {
     }
 
     async fn run_query(&self, cypher: &str, params: Vec<(&str, String)>) -> Result<redis::Value> {
+        let graph = self.effective_graph_name();
         let mut conn = self.conn.lock().await;
         let mut cmd = redis::cmd("GRAPH.QUERY");
-        cmd.arg(&self.graph_name);
+        cmd.arg(&graph);
         if params.is_empty() {
             cmd.arg(cypher);
         } else {
@@ -480,6 +519,22 @@ fn number_from_row(row: &[redis::Value], idx: usize) -> Option<f64> {
     }
 }
 
+/// Validates that a tenant id is safe to interpolate into a FalkorDB
+/// graph name. Rule: 1-64 lowercase alphanumeric / underscore / dash.
+///
+/// Rejecting at this layer is defense in depth. The gateway is
+/// supposed to validate before scoping `ACTIVE_TENANT`, but if a bug
+/// or a future code path sets the task-local without validation, we
+/// don't want a malicious slug like `acme; DROP GRAPH` ending up in a
+/// `GRAPH.QUERY` first argument.
+fn is_valid_tenant_slug(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.chars().all(|c| {
+            c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-'
+        })
+}
+
 fn redis_to_string(v: &redis::Value) -> Option<String> {
     match v {
         redis::Value::BulkString(d) => Some(String::from_utf8_lossy(d).to_string()),
@@ -527,5 +582,111 @@ mod tests {
     fn parse_count_handles_empty_response() {
         let v = redis::Value::Array(vec![]);
         assert_eq!(parse_count(&v), 0);
+    }
+
+    #[test]
+    fn is_valid_tenant_slug_accepts_canonical_forms() {
+        for ok in ["acme", "acme-corp", "tenant_1", "a", "x-y-z", "abc123"] {
+            assert!(is_valid_tenant_slug(ok), "should accept: {ok}");
+        }
+    }
+
+    #[test]
+    fn is_valid_tenant_slug_rejects_unsafe_forms() {
+        for bad in [
+            "",
+            "ACME",                       // uppercase
+            "acme corp",                  // space
+            "acme;DROP",                  // injection-ish
+            "acme.com",                   // dot
+            "acme/",                      // slash
+            &"x".repeat(65),              // too long
+            "тест",                       // non-ascii
+        ] {
+            assert!(!is_valid_tenant_slug(bad), "should reject: {bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn effective_graph_name_falls_back_to_base_when_no_tenant_set() {
+        // Cannot construct a full FalkorDbKnowledgeGraph in unit
+        // tests without Redis, so test the logic via a thin shim
+        // that mirrors the production composition. Note: when
+        // called outside an `ACTIVE_TENANT.scope(..)`, the
+        // try_with returns Err and we fall back.
+        let base = "kg";
+        // No scope set — should yield base.
+        let tenant = crate::qdrant::ACTIVE_TENANT
+            .try_with(|t| t.clone())
+            .ok()
+            .flatten();
+        assert!(
+            tenant.is_none(),
+            "outside scope, ACTIVE_TENANT must read as None"
+        );
+        // Build the same string our production code would emit.
+        let effective = match tenant {
+            Some(t) if is_valid_tenant_slug(&t) => format!("{base}_{t}"),
+            _ => base.to_string(),
+        };
+        assert_eq!(effective, "kg");
+    }
+
+    #[tokio::test]
+    async fn effective_graph_name_isolates_tenants() {
+        let base = "kg";
+
+        let acme = crate::qdrant::ACTIVE_TENANT
+            .scope(Some("acme".to_string()), async {
+                crate::qdrant::ACTIVE_TENANT
+                    .try_with(|t| t.clone())
+                    .ok()
+                    .flatten()
+                    .map(|t| format!("{base}_{t}"))
+                    .unwrap_or_else(|| base.to_string())
+            })
+            .await;
+
+        let other = crate::qdrant::ACTIVE_TENANT
+            .scope(Some("other".to_string()), async {
+                crate::qdrant::ACTIVE_TENANT
+                    .try_with(|t| t.clone())
+                    .ok()
+                    .flatten()
+                    .map(|t| format!("{base}_{t}"))
+                    .unwrap_or_else(|| base.to_string())
+            })
+            .await;
+
+        assert_eq!(acme, "kg_acme");
+        assert_eq!(other, "kg_other");
+        assert_ne!(
+            acme, other,
+            "two tenants in scoped contexts must resolve to different graphs"
+        );
+    }
+
+    #[tokio::test]
+    async fn effective_graph_name_rejects_unsafe_slug_falls_back_to_base() {
+        let base = "kg";
+        // A malicious task-local value with a semicolon must NOT
+        // end up in the graph name — the production code falls
+        // back to base on invalid slugs.
+        let result = crate::qdrant::ACTIVE_TENANT
+            .scope(Some("acme;DROP".to_string()), async {
+                let tenant = crate::qdrant::ACTIVE_TENANT
+                    .try_with(|t| t.clone())
+                    .ok()
+                    .flatten();
+                match tenant {
+                    Some(t) if is_valid_tenant_slug(&t) => format!("{base}_{t}"),
+                    _ => base.to_string(),
+                }
+            })
+            .await;
+        assert_eq!(
+            result, "kg",
+            "unsafe slug must fall back to base, NOT compose into the graph name"
+        );
     }
 }
