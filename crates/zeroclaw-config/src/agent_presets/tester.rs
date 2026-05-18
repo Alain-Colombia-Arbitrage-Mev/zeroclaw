@@ -1,7 +1,7 @@
 //! Tester sub-agent — write the smallest failing test, verify it
 //! fails for the right reason, then make it pass.
 
-use super::common::{RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
+use super::common::{OPENCODE_DELEGATION_HINT, RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
 use crate::schema::DelegateAgentConfig;
 
 pub fn tester_preset(provider: &str, model: &str) -> DelegateAgentConfig {
@@ -9,7 +9,7 @@ pub fn tester_preset(provider: &str, model: &str) -> DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!(
-            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{TESTER_ROLE_PROMPT}"
+            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{OPENCODE_DELEGATION_HINT}\n\n{TESTER_ROLE_PROMPT}"
         )),
         api_key: None,
         temperature: Some(0.2),
@@ -32,6 +32,7 @@ fn tester_tool_allowlist() -> Vec<String> {
         "glob_search",
         "content_search",
         "shell",
+        "opencode_cli",
         "tool_search",
         "knowledge",
         "llm_task",

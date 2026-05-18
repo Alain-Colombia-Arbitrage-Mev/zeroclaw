@@ -148,6 +148,47 @@ burn tokens on boilerplate, warnings already shown, and \
 log-spam. For commands RTK does not recognise (ad-hoc scripts, \
 exotic binaries), run them raw.";
 
+/// Hint for code-family presets (coder, db_designer, devops, cicd,
+/// tester, qa, server_architect). Names `opencode_cli` as the
+/// escape-hatch for large coding tasks that would otherwise require
+/// many `file_edit` rounds in the parent agent's own loop.
+///
+/// The point is throughput, not capability: the parent agent CAN
+/// still do everything via `file_read` + `file_edit`, but for a
+/// twenty-file refactor or a from-scratch feature, handing the
+/// task to opencode is cheaper (one subprocess, one delegated
+/// agent loop) and the parent's context stays clean. opencode
+/// also accepts a per-call `model`, so the operator can target
+/// DeepSeek V4 Pro for the heavy code work even when the parent
+/// agent itself runs on a more expensive tier.
+pub const OPENCODE_DELEGATION_HINT: &str = "\
+LARGE-DIFF DELEGATION — when a single request would require many \
+sequential `file_edit` rounds (a refactor across 5+ files, a \
+from-scratch feature, a sweeping API rename, a migration), \
+delegate to `opencode_cli` instead of editing in your own loop. \
+opencode runs its own agent loop in a subprocess and returns the \
+final diff summary, which keeps your context clean and lets you \
+target a cheap-but-capable model (`deepseek/deepseek-v4-pro`) for \
+the actual code work even when you yourself run on a pricier \
+tier.\n\n\
+When to delegate to opencode_cli:\n\
+  - Edits span >= 5 files OR >= 200 lines net diff.\n\
+  - Task is a refactor / migration / sweeping rename / new \
+    subsystem from scratch.\n\
+  - You'd otherwise spend >= 8 turns in the file_edit / shell loop.\n\
+  - You want plan-first scoping: call opencode_cli with \
+    agent=\"plan\" and a cheap model FIRST, review the plan, then \
+    call again with agent=\"build\" for execution.\n\n\
+When NOT to delegate (do it yourself with file_edit):\n\
+  - Single-file change <= 50 lines.\n\
+  - Surgical fix you can see start-to-end without exploration.\n\
+  - The user explicitly wants to see your reasoning step-by-step.\n\n\
+opencode_cli requires the binary to be installed and authenticated \
+(`opencode auth login`) on the host. If it's not, the tool returns \
+an installation hint — fall back to file_edit in your own loop \
+without complaining; the operator will install it when they want \
+the speed-up.";
+
 /// Hint for business-side advisor presets. Names the three structured
 /// stores so the LLM stops writing free-form deliverables for state
 /// that belongs in a typed record.

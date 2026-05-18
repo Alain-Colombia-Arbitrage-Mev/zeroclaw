@@ -4,7 +4,7 @@
 //! which is unit-test focused; this preset spans the test pyramid
 //! and owns release-readiness reporting.
 
-use super::common::{RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
+use super::common::{OPENCODE_DELEGATION_HINT, RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
 use crate::schema::DelegateAgentConfig;
 
 pub fn qa_preset(provider: &str, model: &str) -> DelegateAgentConfig {
@@ -12,7 +12,7 @@ pub fn qa_preset(provider: &str, model: &str) -> DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!(
-            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{QA_ROLE_PROMPT}"
+            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{OPENCODE_DELEGATION_HINT}\n\n{QA_ROLE_PROMPT}"
         )),
         api_key: None,
         temperature: Some(0.3),
@@ -36,6 +36,7 @@ fn qa_tool_allowlist() -> Vec<String> {
         "content_search",
         "git_operations",
         "shell",
+        "opencode_cli",
         "tool_search",
         "knowledge",
         "graphify",

@@ -1,7 +1,7 @@
 //! Coder sub-agent preset — small, reviewable diffs that pass the
 //! project's own checks.
 
-use super::common::{RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
+use super::common::{OPENCODE_DELEGATION_HINT, RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
 use crate::schema::DelegateAgentConfig;
 
 pub fn coder_preset(provider: &str, model: &str) -> DelegateAgentConfig {
@@ -9,7 +9,7 @@ pub fn coder_preset(provider: &str, model: &str) -> DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!(
-            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{CODER_ROLE_PROMPT}"
+            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{OPENCODE_DELEGATION_HINT}\n\n{CODER_ROLE_PROMPT}"
         )),
         api_key: None,
         temperature: Some(0.2),
@@ -33,6 +33,7 @@ fn coder_tool_allowlist() -> Vec<String> {
         "content_search",
         "git_operations",
         "shell",
+        "opencode_cli",
         "tool_search",
         "knowledge",
         "graphify",
@@ -151,5 +152,28 @@ mod tests {
     fn coder_preset_no_api_key_baked_in() {
         let cfg = coder_preset("openrouter", "any/model");
         assert!(cfg.api_key.is_none());
+    }
+
+    #[test]
+    fn coder_preset_can_delegate_to_opencode() {
+        // Large-diff tasks should hand off to opencode_cli so the
+        // parent's context stays clean. Tool must be on the
+        // allowlist AND the prompt must tell the model when to use
+        // it — without the hint, the model defaults to file_edit
+        // loops even when delegation is cheaper.
+        let cfg = coder_preset("openrouter", "any/model");
+        assert!(
+            cfg.allowed_tools.iter().any(|t| t == "opencode_cli"),
+            "opencode_cli missing from coder allowlist"
+        );
+        let prompt = cfg.system_prompt.unwrap();
+        assert!(
+            prompt.contains("opencode_cli"),
+            "coder prompt must reference opencode_cli for delegation"
+        );
+        assert!(
+            prompt.contains("LARGE-DIFF DELEGATION"),
+            "coder prompt missing the delegation-decision hint"
+        );
     }
 }

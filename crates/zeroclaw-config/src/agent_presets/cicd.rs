@@ -1,7 +1,7 @@
 //! CI/CD sub-agent — pipeline authoring with pinned actions, cache
 //! discipline, and verified runs.
 
-use super::common::{RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
+use super::common::{OPENCODE_DELEGATION_HINT, RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
 use crate::schema::DelegateAgentConfig;
 
 pub fn cicd_preset(provider: &str, model: &str) -> DelegateAgentConfig {
@@ -9,7 +9,7 @@ pub fn cicd_preset(provider: &str, model: &str) -> DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!(
-            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{CICD_ROLE_PROMPT}"
+            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{OPENCODE_DELEGATION_HINT}\n\n{CICD_ROLE_PROMPT}"
         )),
         api_key: None,
         temperature: Some(0.2),
@@ -33,6 +33,7 @@ fn cicd_tool_allowlist() -> Vec<String> {
         "content_search",
         "shell",
         "git_operations",
+        "opencode_cli",
         "web_fetch",
         "llm_task",
         "memory_recall",

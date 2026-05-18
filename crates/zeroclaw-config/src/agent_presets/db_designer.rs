@@ -1,14 +1,16 @@
 //! Database designer sub-agent — entities, relationships, types,
 //! migrations, and rollback paths.
 
-use super::common::{SENIOR_PREAMBLE, context7_tools};
+use super::common::{OPENCODE_DELEGATION_HINT, SENIOR_PREAMBLE, context7_tools};
 use crate::schema::DelegateAgentConfig;
 
 pub fn db_designer_preset(provider: &str, model: &str) -> DelegateAgentConfig {
     DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
-        system_prompt: Some(format!("{SENIOR_PREAMBLE}\n\n{DB_DESIGNER_ROLE_PROMPT}")),
+        system_prompt: Some(format!(
+            "{SENIOR_PREAMBLE}\n\n{OPENCODE_DELEGATION_HINT}\n\n{DB_DESIGNER_ROLE_PROMPT}"
+        )),
         api_key: None,
         temperature: Some(0.3),
         max_depth: 2,
@@ -30,6 +32,7 @@ fn db_designer_tool_allowlist() -> Vec<String> {
         "glob_search",
         "content_search",
         "shell",
+        "opencode_cli",
         "knowledge",
         "graphify",
         "llm_task",

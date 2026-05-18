@@ -3,7 +3,7 @@
 //! observability wiring, and deployment safety. Broader than the
 //! `cicd` preset, which is scoped to the pipeline itself.
 
-use super::common::{RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
+use super::common::{OPENCODE_DELEGATION_HINT, RTK_SHELL_HINT, SENIOR_PREAMBLE, context7_tools};
 use crate::schema::DelegateAgentConfig;
 
 pub fn devops_preset(provider: &str, model: &str) -> DelegateAgentConfig {
@@ -11,7 +11,7 @@ pub fn devops_preset(provider: &str, model: &str) -> DelegateAgentConfig {
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!(
-            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{DEVOPS_ROLE_PROMPT}"
+            "{SENIOR_PREAMBLE}\n\n{RTK_SHELL_HINT}\n\n{OPENCODE_DELEGATION_HINT}\n\n{DEVOPS_ROLE_PROMPT}"
         )),
         api_key: None,
         temperature: Some(0.3),
@@ -35,6 +35,7 @@ fn devops_tool_allowlist() -> Vec<String> {
         "content_search",
         "git_operations",
         "shell",
+        "opencode_cli",
         "tool_search",
         "knowledge",
         "graphify",
