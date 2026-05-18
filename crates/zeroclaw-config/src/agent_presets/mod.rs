@@ -90,6 +90,7 @@ mod forensic_auditor;
 mod fundraise_captain;
 mod general_counsel;
 mod geospatial_analyst;
+mod glossary_keeper;
 mod growth_hacker;
 mod idea_generator;
 mod idea_validator;
@@ -109,6 +110,7 @@ mod pivot_strategist;
 mod planner;
 mod pricing_strategist;
 mod privacy_officer;
+mod process_documenter;
 mod product_manager;
 mod qa;
 mod red_teamer;
@@ -159,6 +161,7 @@ pub use self::forensic_auditor::forensic_auditor_preset;
 pub use self::fundraise_captain::fundraise_captain_preset;
 pub use self::general_counsel::general_counsel_preset;
 pub use self::geospatial_analyst::geospatial_analyst_preset;
+pub use self::glossary_keeper::glossary_keeper_preset;
 pub use self::growth_hacker::growth_hacker_preset;
 pub use self::idea_generator::idea_generator_preset;
 pub use self::idea_validator::idea_validator_preset;
@@ -178,6 +181,7 @@ pub use self::pivot_strategist::pivot_strategist_preset;
 pub use self::planner::planner_preset;
 pub use self::pricing_strategist::pricing_strategist_preset;
 pub use self::privacy_officer::privacy_officer_preset;
+pub use self::process_documenter::process_documenter_preset;
 pub use self::product_manager::product_manager_preset;
 pub use self::qa::qa_preset;
 pub use self::red_teamer::red_teamer_preset;
@@ -234,6 +238,14 @@ mod tests {
                 business_developer_preset("openrouter", "x"),
             ),
             ("product_manager", product_manager_preset("openrouter", "x")),
+            (
+                "process_documenter",
+                process_documenter_preset("openrouter", "x"),
+            ),
+            (
+                "glossary_keeper",
+                glossary_keeper_preset("openrouter", "x"),
+            ),
             ("growth_hacker", growth_hacker_preset("openrouter", "x")),
             (
                 "pricing_strategist",

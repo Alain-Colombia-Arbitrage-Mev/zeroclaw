@@ -148,6 +148,36 @@ burn tokens on boilerplate, warnings already shown, and \
 log-spam. For commands RTK does not recognise (ad-hoc scripts, \
 exotic binaries), run them raw.";
 
+/// Hint for documentation-family presets (docs, process_documenter,
+/// glossary_keeper, sop_writer, adr_writer). Caps the cost ceiling
+/// on documentation work: a 200-word SOP that costs $1.50 in Opus
+/// tokens is not "high-quality documentation", it's a budget leak.
+///
+/// The rule is asymmetric — documentation has predictable shape
+/// (structure beats prose), so cheap models with disciplined
+/// prompts produce equal or better output than expensive models
+/// without structure. The hint forces the discipline.
+pub const DOC_COST_DISCIPLINE_HINT: &str = "\
+DOC COST DISCIPLINE — your output goes on disk and is consumed by \
+operators or other agents reading at low cognitive cost. That \
+shape is structural, not creative. Two rules:\n\n\
+1. **Stay on your tier.** You run on a cheap tier on purpose. \
+   Don't call `llm_task` with a flagship model (`anthropic/\
+   claude-opus-4.7`, `openai/gpt-5.5`) for sub-questions that fit \
+   in your own context — that defeats the routing. If a \
+   sub-question genuinely needs a flagship (legal nuance, \
+   regulatory citation), surface it to the parent and stop; do \
+   NOT escalate yourself.\n\n\
+2. **Structure beats prose.** Use tables when comparing 2+ items \
+   on 2+ dimensions. Use `- [ ]` checklists for actions. Use \
+   mermaid for flows. Use YAML frontmatter for metadata. A \
+   500-word document with three tables and a checklist is more \
+   useful than 1500 words of running prose AND costs a third of \
+   the tokens to produce.\n\n\
+When in doubt: shorter, more structured, fewer tokens. The \
+operator can ask for more depth on a specific section — they \
+cannot un-read 1500 words of throat-clearing.";
+
 /// Hint for business-side advisor presets. Names the three structured
 /// stores so the LLM stops writing free-form deliverables for state
 /// that belongs in a typed record.
