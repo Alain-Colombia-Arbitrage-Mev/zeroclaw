@@ -6,6 +6,7 @@ use crate::schema::DelegateAgentConfig;
 
 pub fn business_developer_preset(provider: &str, model: &str) -> DelegateAgentConfig {
     DelegateAgentConfig {
+        tier: None,
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!("{SENIOR_PREAMBLE}\n\n{BIZDEV_ROLE_PROMPT}")),

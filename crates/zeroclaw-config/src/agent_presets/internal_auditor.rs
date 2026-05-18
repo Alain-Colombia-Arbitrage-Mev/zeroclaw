@@ -7,6 +7,7 @@ use crate::schema::DelegateAgentConfig;
 
 pub fn internal_auditor_preset(provider: &str, model: &str) -> DelegateAgentConfig {
     DelegateAgentConfig {
+        tier: None,
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!(

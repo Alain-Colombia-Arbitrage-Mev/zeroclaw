@@ -11,6 +11,7 @@ pub fn value_creation_strategist_preset(
     model: &str,
 ) -> DelegateAgentConfig {
     DelegateAgentConfig {
+        tier: None,
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!(

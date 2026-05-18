@@ -443,6 +443,112 @@ mod tests {
         );
     }
 
+    // ── DelegateAgentConfig integration ─────────────────────────────
+    //
+    // These tests live here (not in schema.rs) because the routing
+    // table is the source of truth — if the table changes, these
+    // assertions about how a delegate config resolves are part of
+    // the same change set.
+
+    use crate::schema::DelegateAgentConfig;
+
+    #[test]
+    fn normalize_fills_empty_provider_and_model_from_tier() {
+        let mut cfg = DelegateAgentConfig {
+            tier: Some(ModelTier::S4),
+            ..DelegateAgentConfig::default()
+        };
+        cfg.normalize_with_tier();
+        assert_eq!(cfg.provider, "deepseek");
+        assert_eq!(cfg.model, "deepseek-v4-pro");
+    }
+
+    #[test]
+    fn normalize_keeps_explicit_model_even_when_tier_is_set() {
+        // Operator pinned a specific DeepSeek revision; the tier
+        // selects the provider but the explicit model wins.
+        let mut cfg = DelegateAgentConfig {
+            tier: Some(ModelTier::S4),
+            model: "deepseek-v3.1".to_string(),
+            ..DelegateAgentConfig::default()
+        };
+        cfg.normalize_with_tier();
+        assert_eq!(cfg.provider, "deepseek");
+        assert_eq!(
+            cfg.model, "deepseek-v3.1",
+            "explicit model must survive tier resolution",
+        );
+    }
+
+    #[test]
+    fn normalize_is_a_noop_when_tier_is_absent() {
+        let mut cfg = DelegateAgentConfig {
+            provider: "openrouter".to_string(),
+            model: "anthropic/claude-sonnet-4.6".to_string(),
+            ..DelegateAgentConfig::default()
+        };
+        let before = (cfg.provider.clone(), cfg.model.clone());
+        cfg.normalize_with_tier();
+        assert_eq!((cfg.provider.clone(), cfg.model.clone()), before);
+    }
+
+    #[test]
+    fn normalize_is_idempotent() {
+        let mut cfg = DelegateAgentConfig {
+            tier: Some(ModelTier::S2),
+            ..DelegateAgentConfig::default()
+        };
+        cfg.normalize_with_tier();
+        let first = (cfg.provider.clone(), cfg.model.clone());
+        cfg.normalize_with_tier();
+        cfg.normalize_with_tier();
+        let third = (cfg.provider.clone(), cfg.model.clone());
+        assert_eq!(first, third, "normalize must be idempotent");
+    }
+
+    #[test]
+    fn effective_provider_model_does_not_mutate() {
+        let cfg = DelegateAgentConfig {
+            tier: Some(ModelTier::S5),
+            ..DelegateAgentConfig::default()
+        };
+        let (provider, model) = cfg.effective_provider_model();
+        assert_eq!(provider, "moonshotai");
+        assert_eq!(model, "kimi-k2.6");
+        // Confirm the source wasn't touched.
+        assert!(cfg.provider.is_empty());
+        assert!(cfg.model.is_empty());
+    }
+
+    #[test]
+    fn effective_provider_model_returns_explicit_pair_without_tier() {
+        let cfg = DelegateAgentConfig {
+            provider: "anthropic".to_string(),
+            model: "claude-opus-4.7".to_string(),
+            ..DelegateAgentConfig::default()
+        };
+        assert_eq!(
+            cfg.effective_provider_model(),
+            ("anthropic".to_string(), "claude-opus-4.7".to_string()),
+        );
+    }
+
+    #[test]
+    fn toml_round_trip_with_tier_only() {
+        // The whole ergonomic win: an operator writes three lines
+        // in TOML and gets the full tier-resolved pair after load.
+        let toml = r#"
+            tier = "S4"
+        "#;
+        let mut cfg: DelegateAgentConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.tier, Some(ModelTier::S4));
+        assert!(cfg.provider.is_empty());
+        assert!(cfg.model.is_empty());
+        cfg.normalize_with_tier();
+        assert_eq!(cfg.provider, "deepseek");
+        assert_eq!(cfg.model, "deepseek-v4-pro");
+    }
+
     fn all_tiers() -> [ModelTier; 7] {
         [
             ModelTier::S1,

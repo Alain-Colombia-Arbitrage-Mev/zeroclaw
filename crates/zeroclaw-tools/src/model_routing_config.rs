@@ -745,6 +745,7 @@ impl ModelRoutingConfigTool {
             .get(&name)
             .cloned()
             .unwrap_or(DelegateAgentConfig {
+                tier: None,
                 provider: provider.clone(),
                 model: model.clone(),
                 system_prompt: None,

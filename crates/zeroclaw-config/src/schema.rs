@@ -629,13 +629,32 @@ impl Default for DelegateToolConfig {
 // ── Delegate Agents ──────────────────────────────────────────────
 
 /// Configuration for a delegate sub-agent used by the `delegate` tool.
+///
+/// `provider` and `model` can be set explicitly OR resolved from a
+/// `tier`. When `tier` is set and the explicit fields are empty,
+/// `normalize_with_tier()` fills them from the central routing table
+/// in `agent_presets::model_tier::tier_to_model`. Explicit values
+/// always win — set both to override the tier's default.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Configurable)]
 #[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
 #[prefix = "delegate-agent"]
 pub struct DelegateAgentConfig {
-    /// Provider name (e.g. "ollama", "openrouter", "anthropic")
+    /// Routing tier — when set, fills empty `provider`/`model` from
+    /// the central table. Lets operators write `tier = "S4"`
+    /// instead of repeating the (provider, model) pair across
+    /// every code-family agent. See
+    /// `agent_presets::model_tier::ModelTier` for the seven tiers
+    /// and what each maps to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<crate::agent_presets::ModelTier>,
+    /// Provider name (e.g. "ollama", "openrouter", "anthropic").
+    /// Optional when `tier` is set — leave empty and the tier's
+    /// default provider applies. Explicit value wins.
+    #[serde(default)]
     pub provider: String,
-    /// Model name
+    /// Model name. Optional when `tier` is set — leave empty and
+    /// the tier's default model applies. Explicit value wins.
+    #[serde(default)]
     pub model: String,
     /// Optional system prompt for the sub-agent
     #[serde(default)]
@@ -677,6 +696,55 @@ pub struct DelegateAgentConfig {
     /// preventing cross-contamination with memory from other agents.
     #[serde(default)]
     pub memory_namespace: Option<String>,
+}
+
+impl DelegateAgentConfig {
+    /// Fills empty `provider` / `model` from `tier` when set. Idempotent.
+    ///
+    /// Explicit values always win — `tier = "S4"` plus
+    /// `model = "deepseek/deepseek-v3.1"` keeps the operator's
+    /// V3.1 choice and only borrows the provider from the tier.
+    ///
+    /// Call this once after deserialising config from TOML. The
+    /// downstream `delegate` tool reads `provider`/`model`
+    /// directly; without normalisation it would see empty strings
+    /// for tier-only configs and the provider lookup would fail.
+    pub fn normalize_with_tier(&mut self) {
+        let Some(tier) = self.tier else {
+            return;
+        };
+        let (default_provider, default_model) = crate::agent_presets::tier_to_model(tier);
+        if self.provider.is_empty() {
+            self.provider = default_provider.to_string();
+        }
+        if self.model.is_empty() {
+            self.model = default_model.to_string();
+        }
+    }
+
+    /// Returns the effective `(provider, model)` pair this config
+    /// would call. Equivalent to reading the fields after calling
+    /// `normalize_with_tier()`, but doesn't mutate. Useful for
+    /// telemetry / logging without taking `&mut`.
+    #[must_use]
+    pub fn effective_provider_model(&self) -> (String, String) {
+        if let Some(tier) = self.tier {
+            let (default_provider, default_model) = crate::agent_presets::tier_to_model(tier);
+            let provider = if self.provider.is_empty() {
+                default_provider.to_string()
+            } else {
+                self.provider.clone()
+            };
+            let model = if self.model.is_empty() {
+                default_model.to_string()
+            } else {
+                self.model.clone()
+            };
+            (provider, model)
+        } else {
+            (self.provider.clone(), self.model.clone())
+        }
+    }
 }
 
 fn default_delegate_timeout_secs() -> u64 {
@@ -11483,6 +11551,7 @@ macro_rules! impl_enum_prop_kind {
     };
 }
 impl_enum_prop_kind!(
+    crate::agent_presets::ModelTier,
     SwarmStrategy,
     HardwareTransport,
     McpTransport,
@@ -12775,6 +12844,7 @@ default_temperature = 0.7
         config.agents.insert(
             "worker".into(),
             DelegateAgentConfig {
+                tier: None,
                 provider: "openrouter".into(),
                 model: "model-test".into(),
                 system_prompt: None,

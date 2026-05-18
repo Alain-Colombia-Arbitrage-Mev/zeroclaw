@@ -9,6 +9,7 @@ use crate::schema::DelegateAgentConfig;
 
 pub fn community_growth_specialist_preset(provider: &str, model: &str) -> DelegateAgentConfig {
     DelegateAgentConfig {
+        tier: None,
         provider: provider.to_string(),
         model: model.to_string(),
         system_prompt: Some(format!(
