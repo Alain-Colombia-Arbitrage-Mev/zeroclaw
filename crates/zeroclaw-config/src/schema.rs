@@ -4106,9 +4106,18 @@ impl Default for GeminiCliConfig {
 
 /// OpenCode CLI tool configuration (`[opencode_cli]` section).
 ///
-/// Delegates coding tasks to the `opencode run` CLI. Authentication uses the
-/// binary's own session by default — no API key needed unless
-/// `env_passthrough` includes provider-specific keys.
+/// Delegates coding tasks to the [sst/opencode](https://opencode.ai)
+/// CLI via `opencode run`. The binary handles its own provider
+/// authentication (Anthropic / OpenAI / OpenRouter / DeepSeek /
+/// Kimi / etc.) via `opencode auth login`, so no API key needs to
+/// live in ZeroClaw's config unless the operator explicitly passes
+/// one through `env_passthrough`.
+///
+/// Pairs naturally with the model-routing tier system: callers
+/// resolve their tier to `(provider, model)` then pass that to
+/// the tool's `model` parameter so each delegated coding task
+/// targets the cheap/right model rather than opencode's own
+/// default.
 #[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
 #[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
 #[prefix = "opencode-cli"]
@@ -4123,8 +4132,25 @@ pub struct OpenCodeCliConfig {
     #[serde(default = "default_opencode_cli_max_output_bytes")]
     pub max_output_bytes: usize,
     /// Extra env vars passed to the opencode subprocess
+    /// (e.g. `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`,
+    /// `DEEPSEEK_API_KEY`).
     #[serde(default)]
     pub env_passthrough: Vec<String>,
+    /// Default model when the caller doesn't specify one in the
+    /// `model` parameter. Format: `provider/model` — e.g.
+    /// `deepseek/deepseek-v4-pro` for S4 code work,
+    /// `moonshotai/kimi-k2.6` for S5 creative.
+    ///
+    /// `None` means: use opencode's own configured default. Set
+    /// this when the orchestrator isn't already resolving the
+    /// model per call.
+    #[serde(default)]
+    pub default_model: Option<String>,
+    /// Default agent mode. opencode ships with `build` (writes
+    /// code) and `plan` (read-only planning). `None` means: use
+    /// opencode's own default (which is `build`).
+    #[serde(default)]
+    pub default_agent: Option<String>,
 }
 
 fn default_opencode_cli_timeout_secs() -> u64 {
@@ -4142,6 +4168,8 @@ impl Default for OpenCodeCliConfig {
             timeout_secs: default_opencode_cli_timeout_secs(),
             max_output_bytes: default_opencode_cli_max_output_bytes(),
             env_passthrough: Vec::new(),
+            default_model: None,
+            default_agent: None,
         }
     }
 }
