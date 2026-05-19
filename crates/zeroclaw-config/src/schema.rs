@@ -465,152 +465,55 @@ pub struct Config {
     #[serde(default)]
     #[nested]
     pub mirofish: MiroFishConfig,
+
+    /// Email send tool configuration (`[email_send]`). Used by
+    /// support_agent and other agents that need to notify a team
+    /// distribution list when a ticket is created or escalated.
+    #[serde(default)]
+    #[nested]
+    pub email_send: EmailSendConfig,
 }
 
 /// MiroFish (`github.com/666ghj/MiroFish`) integration configuration.
-///
-/// MiroFish is an external multi-agent simulation engine that
-/// builds a digital parallel world from seed materials and runs
-/// thousands of persona-rich agents around a proposed event. The
-/// `market_sentiment_analyst` preset orchestrates it via HTTP.
-///
-/// Authentication: MiroFish does NOT require an API key for the
-/// public HTTP surface (`:5001`). The simulation backend itself
-/// calls an upstream LLM (Qwen / OpenAI / any OpenAI-compatible)
-/// using its OWN configured key — ZeroClaw does not shuttle that
-/// credential.
-///
-/// Operational defaults are TUNED FOR FRUGAL FIRST-PASS RUNS so
-/// the operator doesn't burn LLM tokens on their first invocation:
-/// 50 agents, 10 rounds, 30-minute polling cap. Scale up after the
-/// first run validates persona-mix fit.
 #[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
 #[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
 #[prefix = "mirofish"]
 pub struct MiroFishConfig {
-    /// Enable the MiroFish integration. When `false`, the
-    /// `market_sentiment_analyst` preset is still callable but the
-    /// agent surfaces 'MiroFish disabled — set
-    /// `mirofish.enabled = true` after starting the sidecar'.
     #[serde(default)]
     pub enabled: bool,
-
-    /// Base URL of the MiroFish HTTP service. Default fits the
-    /// recommended same-host docker-compose setup
-    /// (`docs/integrations-mirofish.md`). Override for remote
-    /// MiroFish boxes or non-default ports.
     #[serde(default = "default_mirofish_base_url")]
     pub base_url: String,
-
-    /// Default agent count for a smoke-test first run. Frugal floor
-    /// — small enough that an operator's first invocation costs
-    /// pennies of upstream LLM tokens. Override per-call once the
-    /// persona-mix audit shows the seed is right.
     #[serde(default = "default_mirofish_agents")]
     pub default_agents: u32,
-
-    /// Default simulation rounds for the smoke-test first run.
-    /// Same frugality logic as `default_agents`.
     #[serde(default = "default_mirofish_rounds")]
     pub default_rounds: u32,
-
-    /// Polling interval in seconds when waiting on
-    /// `/api/report/generate/status`. MiroFish reports are
-    /// async — the client polls until status='completed'.
-    /// Default 10s matches the doc-recommended minimum (faster
-    /// pollintervals burn LLM tokens on no-op work).
     #[serde(default = "default_mirofish_poll_interval_secs")]
     pub poll_interval_secs: u64,
-
-    /// Hard polling timeout in seconds. After this much wall-time
-    /// with status != 'completed', the agent gives up and reports
-    /// 'simulation timed out'. Default 1800s = 30min — long
-    /// enough for 500-agent runs, short enough that a hung
-    /// simulation doesn't burn an agent's iteration budget.
     #[serde(default = "default_mirofish_poll_timeout_secs")]
     pub poll_timeout_secs: u64,
-
-    /// Number of seed variants to run per simulation request.
-    /// Three is the discipline-driven minimum (baseline / failure-
-    /// mode-amplified / competitor-counter-move). Override to 1
-    /// for a quick smoke test that costs 1/3 the upstream tokens.
     #[serde(default = "default_mirofish_seed_variants")]
     pub seed_variants: u32,
-
-    /// Optional API key passthrough if a deployment proxies
-    /// MiroFish behind an auth gateway. Stored in the keyring per
-    /// the `#[secret]` attribute.
     #[serde(default)]
     #[secret]
     #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
     pub api_key: Option<String>,
-
-    /// Forensic logging configuration — when enabled, persist the
-    /// raw JSON of every MiroFish HTTP call (request + response)
-    /// to disk in addition to the three asset receipts. Useful for
-    /// audit, replay, and post-hoc analysis when the receipts
-    /// alone are not enough (e.g. when MiroFish's report endpoint
-    /// changes shape between versions).
+    /// Forensic logging — persist raw HTTP JSON on disk for audit/replay.
     #[serde(default)]
     #[nested]
     pub logging: MiroFishLoggingConfig,
 }
 
 /// Forensic logging configuration for the MiroFish integration.
-///
-/// Distinct from the three asset receipts (`graph_id`,
-/// `simulation_id`, `report_id`) that get persisted into the
-/// deliverable. Those let you REPLAY a simulation against
-/// MiroFish's own DB. The generation log records the raw HTTP
-/// payloads at ZeroClaw's side — what we sent, what we got back —
-/// which is the only artifact that survives if MiroFish's
-/// database is wiped or migrated.
-///
-/// Cost reality: log files grow with `agents × rounds × calls`.
-/// At 500 agents × 30 rounds × 3 variants a single simulation
-/// can produce ~50-200 MB of generation logs. Default is OFF;
-/// turn on per-tenant per-simulation when forensics matter.
 #[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
 #[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
 #[prefix = "mirofish-logging"]
 pub struct MiroFishLoggingConfig {
-    /// Master switch. When false, only the three receipts get
-    /// persisted (via the standard deliverable flow). When true,
-    /// every HTTP call to MiroFish gets written to disk as
-    /// described in `generation_log_dir`.
     #[serde(default)]
     pub enabled: bool,
-
-    /// Directory where generation logs land, relative to the
-    /// active workspace root. Each simulation gets its own
-    /// subdirectory: `<dir>/<YYYY-MM-DD>/<simulation_id>/`.
-    /// Per-subdirectory files:
-    ///   - `00-health.json` — initial health-check.
-    ///   - `01-build-request.json` / `01-build-response.json`.
-    ///   - `02-entities-request.json` / `02-entities-response.json`.
-    ///   - `03-run-request.json` / `03-run-response.json`.
-    ///   - `04-generate-request.json` / `04-generate-response.json`.
-    ///   - `05-poll-<NNN>-status.json` (one per poll).
-    ///   - `06-report.json` — final report body.
-    /// All files are pretty-printed JSON so a human auditor can
-    /// open them. None of the files contain secrets — the API
-    /// key never appears in the request body.
     #[serde(default = "default_mirofish_generation_log_dir")]
     pub generation_log_dir: String,
-
-    /// Truncate response bodies above this byte threshold to
-    /// prevent runaway disk usage on a misbehaving MiroFish
-    /// instance. The original response is still surfaced to the
-    /// agent in-memory; only the on-disk copy gets truncated with
-    /// a `... [truncated, original NN bytes]` marker.
-    /// Default 5 MB per response.
     #[serde(default = "default_mirofish_response_truncate_bytes")]
     pub response_truncate_bytes: usize,
-
-    /// Number of days the generation log dir retains files
-    /// before the daemon's cleanup job deletes them. Default 90.
-    /// Match this to your audit / compliance window — for
-    /// regulated tenants you may want 365 or more.
     #[serde(default = "default_mirofish_log_retention_days")]
     pub retention_days: u32,
 }
@@ -618,11 +521,9 @@ pub struct MiroFishLoggingConfig {
 fn default_mirofish_generation_log_dir() -> String {
     "mirofish-logs".to_string()
 }
-
 fn default_mirofish_response_truncate_bytes() -> usize {
-    5_242_880 // 5 MiB
+    5_242_880
 }
-
 fn default_mirofish_log_retention_days() -> u32 {
     90
 }
@@ -641,23 +542,18 @@ impl Default for MiroFishLoggingConfig {
 fn default_mirofish_base_url() -> String {
     "http://127.0.0.1:5001".to_string()
 }
-
 fn default_mirofish_agents() -> u32 {
     50
 }
-
 fn default_mirofish_rounds() -> u32 {
     10
 }
-
 fn default_mirofish_poll_interval_secs() -> u64 {
     10
 }
-
 fn default_mirofish_poll_timeout_secs() -> u64 {
     1800
 }
-
 fn default_mirofish_seed_variants() -> u32 {
     3
 }
@@ -674,6 +570,57 @@ impl Default for MiroFishConfig {
             seed_variants: default_mirofish_seed_variants(),
             api_key: None,
             logging: MiroFishLoggingConfig::default(),
+        }
+    }
+}
+
+/// Email send tool configuration (`[email_send]`) — outbound
+/// transactional email (Resend MVP).
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "email-send"]
+pub struct EmailSendConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_email_send_provider")]
+    pub provider: String,
+    #[serde(default)]
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub from_address: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_team_distribution: Option<String>,
+    #[serde(default)]
+    pub allowed_recipients: Vec<String>,
+    #[serde(default = "default_email_send_rate_limit_per_hour")]
+    pub rate_limit_per_hour: u32,
+    #[serde(default = "default_email_send_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+fn default_email_send_provider() -> String {
+    "resend".to_string()
+}
+fn default_email_send_rate_limit_per_hour() -> u32 {
+    60
+}
+fn default_email_send_timeout_secs() -> u64 {
+    30
+}
+
+impl Default for EmailSendConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_email_send_provider(),
+            api_key: None,
+            from_address: String::new(),
+            default_team_distribution: None,
+            allowed_recipients: Vec::new(),
+            rate_limit_per_hour: default_email_send_rate_limit_per_hour(),
+            timeout_secs: default_email_send_timeout_secs(),
         }
     }
 }
@@ -9670,6 +9617,7 @@ impl Default for Config {
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
             mirofish: MiroFishConfig::default(),
+            email_send: EmailSendConfig::default(),
         }
     }
 }
@@ -12493,6 +12441,7 @@ auto_save = true
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
             mirofish: MiroFishConfig::default(),
+            email_send: EmailSendConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
         // Provider fields are now resolved directly — no cache needed.
@@ -13063,6 +13012,7 @@ default_temperature = 0.7
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
             mirofish: MiroFishConfig::default(),
+            email_send: EmailSendConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };

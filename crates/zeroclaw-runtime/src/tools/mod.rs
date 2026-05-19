@@ -75,6 +75,7 @@ pub use zeroclaw_tools::hardware_memory_read::HardwareMemoryReadTool;
 pub use zeroclaw_tools::http_request::HttpRequestTool;
 pub use zeroclaw_tools::image_gen::ImageGenTool;
 pub use zeroclaw_tools::image_info::ImageInfoTool;
+pub use zeroclaw_tools::email_send::EmailSendTool;
 pub use zeroclaw_tools::jira_tool::JiraTool;
 pub use zeroclaw_tools::knowledge_tool::KnowledgeTool;
 pub use zeroclaw_tools::kpi_record::KpiRecordTool;
@@ -566,6 +567,14 @@ pub fn all_tools_with_runtime(
                 root_config.jira.timeout_secs,
             )));
         }
+    }
+
+    // Email send (outbound transactional email — Resend backend).
+    if root_config.email_send.enabled {
+        tool_arcs.push(Arc::new(EmailSendTool::new(
+            root_config.email_send.clone(),
+            security.clone(),
+        )));
     }
 
     // Project delivery intelligence
