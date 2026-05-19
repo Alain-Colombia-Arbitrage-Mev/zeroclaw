@@ -79,6 +79,7 @@ mod customer_researcher;
 mod customer_success;
 mod data_analyst;
 mod db_designer;
+mod decision_scientist;
 mod deeptech_financier;
 mod designer;
 mod devops;
@@ -114,6 +115,7 @@ mod pricing_strategist;
 mod privacy_officer;
 mod product_manager;
 mod qa;
+mod quant_analyst;
 mod red_teamer;
 mod reviewer;
 mod risk_analyst;
@@ -153,6 +155,7 @@ pub use self::customer_researcher::customer_researcher_preset;
 pub use self::customer_success::customer_success_preset;
 pub use self::data_analyst::data_analyst_preset;
 pub use self::db_designer::db_designer_preset;
+pub use self::decision_scientist::decision_scientist_preset;
 pub use self::deeptech_financier::deeptech_financier_preset;
 pub use self::designer::designer_preset;
 pub use self::devops::devops_preset;
@@ -188,6 +191,7 @@ pub use self::pricing_strategist::pricing_strategist_preset;
 pub use self::privacy_officer::privacy_officer_preset;
 pub use self::product_manager::product_manager_preset;
 pub use self::qa::qa_preset;
+pub use self::quant_analyst::quant_analyst_preset;
 pub use self::red_teamer::red_teamer_preset;
 pub use self::reviewer::reviewer_preset;
 pub use self::risk_analyst::risk_analyst_preset;
@@ -275,6 +279,14 @@ mod tests {
                 finance_controller_preset("openrouter", "x"),
             ),
             ("data_analyst", data_analyst_preset("openrouter", "x")),
+            (
+                "quant_analyst",
+                quant_analyst_preset("openrouter", "x"),
+            ),
+            (
+                "decision_scientist",
+                decision_scientist_preset("openrouter", "x"),
+            ),
             ("ceo_advisor", ceo_advisor_preset("openrouter", "x")),
             ("idea_generator", idea_generator_preset("openrouter", "x")),
             ("idea_validator", idea_validator_preset("openrouter", "x")),

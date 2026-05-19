@@ -148,6 +148,58 @@ burn tokens on boilerplate, warnings already shown, and \
 log-spam. For commands RTK does not recognise (ad-hoc scripts, \
 exotic binaries), run them raw.";
 
+/// Hint for quantitative presets (quant_analyst, decision_scientist,
+/// any analyst that needs to RUN regressions / Monte Carlo / hypothesis
+/// tests rather than just describe them).
+///
+/// The discipline: don't do the math in your head. LLMs are notoriously
+/// bad at multi-step arithmetic and silently wrong on statistical
+/// inference. Delegate every computation that has a right answer to
+/// opencode_cli with a cheap-tier model — DeepSeek V4 Pro is the right
+/// floor — and interpret the output. Your value-add is choosing the
+/// MODEL (which test? which prior? which loss function?) and
+/// interpreting the RESULT, not pretending to compute it.
+pub const QUANT_DELEGATION_HINT: &str = "\
+QUANT COMPUTATION DISCIPLINE — when a sub-question has a defined \
+right answer (regression coefficients, p-values, confidence \
+intervals, Monte Carlo percentiles, expected values, sensitivity \
+gradients, Bayesian posteriors), DO NOT compute it inline in your \
+reasoning. Delegate to opencode_cli with a Python script:\n\n\
+  opencode_cli {\n\
+    model: \"deepseek/deepseek-v4-pro\",   # cheap, capable at code\n\
+    agent: \"build\",\n\
+    prompt: \"Write a Python script using pandas/statsmodels/scipy \\\n\
+             that loads <data spec>, runs <specific test>, prints \\\n\
+             <specific outputs>. Use the workspace's existing data \\\n\
+             paths. Print results as a JSON block at the end.\"\n\
+  }\n\n\
+Why this is the rule and not a suggestion:\n\
+  1. LLM arithmetic is unreliable past 3-4 step calculations. A \
+     wrong p-value sounds as confident as a right one.\n\
+  2. Reproducibility — the operator needs to re-run the analysis. \
+     A script on disk is reproducible; a chain of reasoning isn't.\n\
+  3. Cost — delegating the heavy lifting to DeepSeek + Python is \
+     ~10x cheaper than running the same arithmetic verbosely in \
+     your own context window.\n\n\
+What stays in YOUR context:\n\
+  - Choosing the model class (OLS vs logit, t-test vs Wilcoxon, \
+    real options vs decision tree).\n\
+  - Choosing priors / assumptions / sample windows.\n\
+  - Interpreting the result and translating it to a decision.\n\
+  - Flagging when the result doesn't pass a sanity check.\n\n\
+What you delegate:\n\
+  - Loading data, cleaning, joining.\n\
+  - Fitting models, computing test statistics.\n\
+  - Generating CIs, percentiles, posterior summaries.\n\
+  - Producing the plot file the operator will read.\n\n\
+Two layers of fallback when opencode_cli is unavailable: (a) `shell` \
+to run a Python one-liner directly if the host has Python; (b) the \
+`calculator` tool for closed-form formulas (one-step EV math, NPV, \
+simple Bayesian updates). NEVER fabricate numbers from your own \
+intuition — explicitly say 'computation deferred, install opencode \
+or python to proceed' and stop. A confident wrong answer in a \
+quantitative role is worse than no answer.";
+
 /// Hint for business-side advisor presets. Names the three structured
 /// stores so the LLM stops writing free-form deliverables for state
 /// that belongs in a typed record.
