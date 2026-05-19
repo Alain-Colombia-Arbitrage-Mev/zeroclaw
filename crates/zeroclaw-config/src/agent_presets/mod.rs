@@ -59,6 +59,7 @@
 mod account_executive;
 mod adr_writer;
 mod architect;
+mod blue_ocean_strategist;
 mod business_developer;
 mod capex_controller;
 mod ceo_advisor;
@@ -102,6 +103,7 @@ mod market_researcher;
 mod market_sentiment_analyst;
 mod marketing;
 mod negotiator;
+mod neuromarketing_godin;
 mod ngo_architect;
 mod personal_brand_strategist;
 mod phd_business;
@@ -123,12 +125,15 @@ mod support_agent;
 mod tax_advisor;
 mod tester;
 mod treasurer;
+mod unicorn_captain;
 mod valuation_analyst;
+mod wellness_dispenza;
 mod value_creation_strategist;
 
 pub use self::account_executive::account_executive_preset;
 pub use self::adr_writer::adr_writer_preset;
 pub use self::architect::architect_preset;
+pub use self::blue_ocean_strategist::blue_ocean_strategist_preset;
 pub use self::business_developer::business_developer_preset;
 pub use self::capex_controller::capex_controller_preset;
 pub use self::ceo_advisor::ceo_advisor_preset;
@@ -171,6 +176,7 @@ pub use self::market_researcher::market_researcher_preset;
 pub use self::market_sentiment_analyst::market_sentiment_analyst_preset;
 pub use self::marketing::marketing_preset;
 pub use self::negotiator::negotiator_preset;
+pub use self::neuromarketing_godin::neuromarketing_godin_preset;
 pub use self::ngo_architect::ngo_architect_preset;
 pub use self::personal_brand_strategist::personal_brand_strategist_preset;
 pub use self::phd_business::phd_business_preset;
@@ -192,7 +198,9 @@ pub use self::support_agent::support_agent_preset;
 pub use self::tax_advisor::tax_advisor_preset;
 pub use self::tester::tester_preset;
 pub use self::treasurer::treasurer_preset;
+pub use self::unicorn_captain::unicorn_captain_preset;
 pub use self::valuation_analyst::valuation_analyst_preset;
+pub use self::wellness_dispenza::wellness_dispenza_preset;
 pub use self::value_creation_strategist::value_creation_strategist_preset;
 
 #[cfg(test)]
@@ -235,6 +243,22 @@ mod tests {
             ),
             ("product_manager", product_manager_preset("openrouter", "x")),
             ("growth_hacker", growth_hacker_preset("openrouter", "x")),
+            (
+                "neuromarketing_godin",
+                neuromarketing_godin_preset("openrouter", "x"),
+            ),
+            (
+                "wellness_dispenza",
+                wellness_dispenza_preset("openrouter", "x"),
+            ),
+            (
+                "blue_ocean_strategist",
+                blue_ocean_strategist_preset("openrouter", "x"),
+            ),
+            (
+                "unicorn_captain",
+                unicorn_captain_preset("openrouter", "x"),
+            ),
             (
                 "pricing_strategist",
                 pricing_strategist_preset("openrouter", "x"),
