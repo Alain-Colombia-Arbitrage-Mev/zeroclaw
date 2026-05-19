@@ -24,9 +24,18 @@ pub fn market_sentiment_analyst_preset(provider: &str, model: &str) -> DelegateA
         max_depth: 3,
         agentic: true,
         allowed_tools: sentiment_tool_allowlist(),
-        max_iterations: 20,
+        // CRITICAL: the workflow is 3 seed variants × (health +
+        // build + entities + run + generate + N polls + fetch) +
+        // triangulation + persistence. Minimum: 6+3N per run × 3
+        // runs + 5 = 23 + 9N. With N ≥ 3 polls per run that's
+        // 50+ iterations. The original 20 cut the workflow at
+        // half. 80 leaves headroom for long polling and re-seeding.
+        max_iterations: 80,
         timeout_secs: Some(360),
-        agentic_timeout_secs: Some(2400),
+        // 60 minutes — three full runs at 500 agents each, with
+        // generous polling, fits inside this budget. Operator can
+        // override per-call when running smoke tests faster.
+        agentic_timeout_secs: Some(3600),
         skills_directory: None,
         memory_namespace: Some("market_sentiment_analyst".to_string()),
     }
@@ -63,14 +72,23 @@ on. You do not own the launch — you produce the evidence that the \
 go / no-go is informed by.
 
 What MiroFish is. MiroFish is an external multi-agent simulation \
-service (github.com/666ghj/MiroFish, default base URL \
-http://127.0.0.1:5001) that builds a digital parallel world from \
-seed materials, spawns persona-rich agents with long-term memory, \
-and lets them socially evolve around a proposed event. Its output \
-is a structured report with sentiment trajectories, influencer \
-identification, contrarian voices, and predicted spread. It is \
-*one input* to the decision; the operator weighs it against \
-qualitative signals.
+service (github.com/666ghj/MiroFish) that builds a digital \
+parallel world from seed materials, spawns persona-rich agents \
+with long-term memory, and lets them socially evolve around a \
+proposed event. Its output is a structured report with sentiment \
+trajectories, influencer identification, contrarian voices, and \
+predicted spread. It is *one input* to the decision; the operator \
+weighs it against qualitative signals.\n\n\
+**Where MiroFish lives.** The base URL is configured at \
+`[mirofish] base_url` in the daemon config (default \
+`http://127.0.0.1:5001`). When the integration is disabled \
+(`[mirofish] enabled = false`), surface that to the operator and \
+stop — do NOT fabricate sentiment without running the simulation.\n\n\
+**Frugal defaults.** First-pass runs use `default_agents` (50) \
+and `default_rounds` (10) from config — small enough that the \
+first invocation costs pennies of upstream LLM tokens. Scale up \
+ONLY after the persona-mix audit confirms the seed dossier was \
+right. Production runs typically use 500 agents × 30 rounds.
 
 Operating principles:
 
@@ -129,10 +147,14 @@ Operating principles:
 Operating procedure (HTTP via http_request tool):
 
 1. Health check the MiroFish service:
-   `GET {MIROFISH_BASE_URL}/api/graph/project/list`
-   If unreachable, surface to operator: \"MiroFish not running on \
-   {url}. Start it with `docker compose up -d` from the MiroFish \
-   repository, or set MIROFISH_BASE_URL in config.\"
+   `GET <mirofish.base_url>/api/graph/project/list` — read the \
+   base URL from the daemon's `[mirofish]` config block. If the \
+   request fails with connection-refused / timeout, surface to \
+   operator: \"MiroFish is not reachable at <url>. Verify the \
+   sidecar is running (`docker compose ps mirofish-backend`) and \
+   that `[mirofish] enabled = true` in config. Do NOT proceed.\" \
+   If the integration is disabled outright, stop and surface that \
+   — no fabricated reports.
 
 2. Build the graph from seed materials:
    `POST /api/graph/build` with the assembled seed dossier (text + \
@@ -225,7 +247,52 @@ mod tests {
     fn market_sentiment_analyst_preset_is_agentic() {
         let cfg = market_sentiment_analyst_preset("openrouter", "any/model");
         assert!(cfg.agentic);
-        assert!(cfg.max_iterations >= 12);
+        // The workflow is 3 seed variants × (health + build +
+        // entities + run + generate + N polls + fetch) +
+        // triangulation. With N ≥ 3 polls per run that's ~50+
+        // iterations. Anything below 50 cuts the workflow at half.
+        assert!(
+            cfg.max_iterations >= 50,
+            "max_iterations={} is too low for the 3-seed-variant workflow",
+            cfg.max_iterations
+        );
+    }
+
+    #[test]
+    fn market_sentiment_analyst_agentic_timeout_covers_three_full_runs() {
+        // 3 runs × (build 30s + simulation 5-10min + report 2-3min)
+        // + triangulation + persistence. Plus polling overhead.
+        // Sub-30-minute timeouts cut long simulations off.
+        let cfg = market_sentiment_analyst_preset("openrouter", "any/model");
+        let secs = cfg.agentic_timeout_secs.expect("must set timeout");
+        assert!(
+            secs >= 1800,
+            "agentic_timeout_secs={secs} is too low for 3 full simulation runs"
+        );
+    }
+
+    #[test]
+    fn market_sentiment_analyst_prompt_references_mirofish_config_not_hardcoded_url() {
+        // The prompt must NOT lock the URL — operators move
+        // MiroFish off-host and the preset shouldn't need a recompile.
+        let cfg = market_sentiment_analyst_preset("openrouter", "any/model");
+        let prompt = cfg.system_prompt.unwrap();
+        // The literal default may appear in a 'default' explanation,
+        // but the prompt must also reference reading the URL from config.
+        assert!(
+            prompt.contains("mirofish.base_url") || prompt.contains("mirofish] base_url"),
+            "prompt must direct the model to read base_url from [mirofish] config"
+        );
+    }
+
+    #[test]
+    fn market_sentiment_analyst_prompt_refuses_fabrication_when_disabled() {
+        // Critical discipline: if MiroFish isn't reachable, the
+        // agent must STOP, not invent sentiment.
+        let cfg = market_sentiment_analyst_preset("openrouter", "any/model");
+        let prompt = cfg.system_prompt.unwrap();
+        assert!(prompt.contains("fabricate"));
+        assert!(prompt.contains("Do NOT proceed") || prompt.contains("do NOT fabricate"));
     }
 
     #[test]

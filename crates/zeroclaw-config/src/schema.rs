@@ -458,6 +458,131 @@ pub struct Config {
     #[serde(default)]
     #[nested]
     pub shell_tool: ShellToolConfig,
+
+    /// MiroFish sentiment-simulation sidecar configuration
+    /// (`[mirofish]`). Used by the `market_sentiment_analyst`
+    /// preset which orchestrates MiroFish over HTTP.
+    #[serde(default)]
+    #[nested]
+    pub mirofish: MiroFishConfig,
+}
+
+/// MiroFish (`github.com/666ghj/MiroFish`) integration configuration.
+///
+/// MiroFish is an external multi-agent simulation engine that
+/// builds a digital parallel world from seed materials and runs
+/// thousands of persona-rich agents around a proposed event. The
+/// `market_sentiment_analyst` preset orchestrates it via HTTP.
+///
+/// Authentication: MiroFish does NOT require an API key for the
+/// public HTTP surface (`:5001`). The simulation backend itself
+/// calls an upstream LLM (Qwen / OpenAI / any OpenAI-compatible)
+/// using its OWN configured key — ZeroClaw does not shuttle that
+/// credential.
+///
+/// Operational defaults are TUNED FOR FRUGAL FIRST-PASS RUNS so
+/// the operator doesn't burn LLM tokens on their first invocation:
+/// 50 agents, 10 rounds, 30-minute polling cap. Scale up after the
+/// first run validates persona-mix fit.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "mirofish"]
+pub struct MiroFishConfig {
+    /// Enable the MiroFish integration. When `false`, the
+    /// `market_sentiment_analyst` preset is still callable but the
+    /// agent surfaces 'MiroFish disabled — set
+    /// `mirofish.enabled = true` after starting the sidecar'.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Base URL of the MiroFish HTTP service. Default fits the
+    /// recommended same-host docker-compose setup
+    /// (`docs/integrations-mirofish.md`). Override for remote
+    /// MiroFish boxes or non-default ports.
+    #[serde(default = "default_mirofish_base_url")]
+    pub base_url: String,
+
+    /// Default agent count for a smoke-test first run. Frugal floor
+    /// — small enough that an operator's first invocation costs
+    /// pennies of upstream LLM tokens. Override per-call once the
+    /// persona-mix audit shows the seed is right.
+    #[serde(default = "default_mirofish_agents")]
+    pub default_agents: u32,
+
+    /// Default simulation rounds for the smoke-test first run.
+    /// Same frugality logic as `default_agents`.
+    #[serde(default = "default_mirofish_rounds")]
+    pub default_rounds: u32,
+
+    /// Polling interval in seconds when waiting on
+    /// `/api/report/generate/status`. MiroFish reports are
+    /// async — the client polls until status='completed'.
+    /// Default 10s matches the doc-recommended minimum (faster
+    /// pollintervals burn LLM tokens on no-op work).
+    #[serde(default = "default_mirofish_poll_interval_secs")]
+    pub poll_interval_secs: u64,
+
+    /// Hard polling timeout in seconds. After this much wall-time
+    /// with status != 'completed', the agent gives up and reports
+    /// 'simulation timed out'. Default 1800s = 30min — long
+    /// enough for 500-agent runs, short enough that a hung
+    /// simulation doesn't burn an agent's iteration budget.
+    #[serde(default = "default_mirofish_poll_timeout_secs")]
+    pub poll_timeout_secs: u64,
+
+    /// Number of seed variants to run per simulation request.
+    /// Three is the discipline-driven minimum (baseline / failure-
+    /// mode-amplified / competitor-counter-move). Override to 1
+    /// for a quick smoke test that costs 1/3 the upstream tokens.
+    #[serde(default = "default_mirofish_seed_variants")]
+    pub seed_variants: u32,
+
+    /// Optional API key passthrough if a deployment proxies
+    /// MiroFish behind an auth gateway. Stored in the keyring per
+    /// the `#[secret]` attribute.
+    #[serde(default)]
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    pub api_key: Option<String>,
+}
+
+fn default_mirofish_base_url() -> String {
+    "http://127.0.0.1:5001".to_string()
+}
+
+fn default_mirofish_agents() -> u32 {
+    50
+}
+
+fn default_mirofish_rounds() -> u32 {
+    10
+}
+
+fn default_mirofish_poll_interval_secs() -> u64 {
+    10
+}
+
+fn default_mirofish_poll_timeout_secs() -> u64 {
+    1800
+}
+
+fn default_mirofish_seed_variants() -> u32 {
+    3
+}
+
+impl Default for MiroFishConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: default_mirofish_base_url(),
+            default_agents: default_mirofish_agents(),
+            default_rounds: default_mirofish_rounds(),
+            poll_interval_secs: default_mirofish_poll_interval_secs(),
+            poll_timeout_secs: default_mirofish_poll_timeout_secs(),
+            seed_variants: default_mirofish_seed_variants(),
+            api_key: None,
+        }
+    }
 }
 
 /// Multi-client workspace isolation configuration.
@@ -9451,6 +9576,7 @@ impl Default for Config {
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
+            mirofish: MiroFishConfig::default(),
         }
     }
 }
@@ -11515,6 +11641,87 @@ impl HasPropKind for serde_json::Value {
 }
 
 #[cfg(test)]
+mod mirofish_tests {
+    use super::MiroFishConfig;
+
+    #[test]
+    fn mirofish_default_is_disabled_with_localhost_url() {
+        // Default config disables the integration so existing
+        // single-tenant operators don't accidentally fire blank
+        // HTTP requests at localhost. Default URL points to the
+        // recommended same-host docker-compose port.
+        let cfg = MiroFishConfig::default();
+        assert!(!cfg.enabled, "MiroFish must default to disabled");
+        assert_eq!(cfg.base_url, "http://127.0.0.1:5001");
+    }
+
+    #[test]
+    fn mirofish_default_agents_and_rounds_are_frugal() {
+        // First-pass smoke-test defaults — small enough that an
+        // operator's first run costs pennies of upstream LLM
+        // tokens. Production runs use 500/30 via per-call override.
+        let cfg = MiroFishConfig::default();
+        assert_eq!(cfg.default_agents, 50);
+        assert_eq!(cfg.default_rounds, 10);
+    }
+
+    #[test]
+    fn mirofish_seed_variants_default_to_three() {
+        // The discipline-driven minimum (baseline / failure-mode-
+        // amplified / competitor-counter-move). Lower would
+        // produce single-shot noise the agent can't detect as such.
+        let cfg = MiroFishConfig::default();
+        assert_eq!(cfg.seed_variants, 3);
+    }
+
+    #[test]
+    fn mirofish_poll_interval_matches_doc_recommendation() {
+        // 10s is the doc-recommended minimum. Faster polling
+        // burns upstream LLM tokens on no-op work.
+        let cfg = MiroFishConfig::default();
+        assert_eq!(cfg.poll_interval_secs, 10);
+    }
+
+    #[test]
+    fn mirofish_poll_timeout_long_enough_for_500_agent_run() {
+        // 30 minutes covers 500 agents × 30 rounds at typical
+        // upstream-LLM throughput. Shorter timeouts cut off long
+        // production runs.
+        let cfg = MiroFishConfig::default();
+        assert!(cfg.poll_timeout_secs >= 1800);
+    }
+
+    #[test]
+    fn mirofish_api_key_optional_and_secret() {
+        // API key is optional (vanilla MiroFish has no auth). When
+        // set (e.g. behind a Caddy reverse proxy with bearer auth),
+        // the #[secret] attribute routes it through the keyring.
+        let cfg = MiroFishConfig::default();
+        assert!(cfg.api_key.is_none());
+    }
+
+    #[test]
+    fn mirofish_toml_round_trip() {
+        let cfg = MiroFishConfig {
+            enabled: true,
+            base_url: "https://mirofish.acme.example".into(),
+            default_agents: 500,
+            default_rounds: 30,
+            poll_interval_secs: 15,
+            poll_timeout_secs: 2400,
+            seed_variants: 3,
+            api_key: Some("op_key".into()),
+        };
+        let toml = toml::to_string(&cfg).expect("must serialise");
+        let parsed: MiroFishConfig = toml::from_str(&toml).expect("must deserialise");
+        assert!(parsed.enabled);
+        assert_eq!(parsed.base_url, "https://mirofish.acme.example");
+        assert_eq!(parsed.default_agents, 500);
+        assert_eq!(parsed.poll_timeout_secs, 2400);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::io;
@@ -12140,6 +12347,7 @@ auto_save = true
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
+            mirofish: MiroFishConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
         // Provider fields are now resolved directly — no cache needed.
@@ -12709,6 +12917,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            mirofish: MiroFishConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
