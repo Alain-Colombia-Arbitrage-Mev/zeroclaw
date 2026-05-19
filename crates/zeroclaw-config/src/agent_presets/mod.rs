@@ -59,8 +59,10 @@
 mod account_executive;
 mod adr_writer;
 mod architect;
+mod bayesian_priors_keeper;
 mod blue_ocean_strategist;
 mod business_developer;
+mod calibration_scorer;
 mod capex_controller;
 mod ceo_advisor;
 mod cfo_advisor;
@@ -119,6 +121,7 @@ mod quant_analyst;
 mod red_teamer;
 mod reviewer;
 mod risk_analyst;
+mod scenario_planner;
 mod scriptwriter;
 mod sdr_outbound;
 mod security;
@@ -136,8 +139,10 @@ mod value_creation_strategist;
 pub use self::account_executive::account_executive_preset;
 pub use self::adr_writer::adr_writer_preset;
 pub use self::architect::architect_preset;
+pub use self::bayesian_priors_keeper::bayesian_priors_keeper_preset;
 pub use self::blue_ocean_strategist::blue_ocean_strategist_preset;
 pub use self::business_developer::business_developer_preset;
+pub use self::calibration_scorer::calibration_scorer_preset;
 pub use self::capex_controller::capex_controller_preset;
 pub use self::ceo_advisor::ceo_advisor_preset;
 pub use self::cfo_advisor::cfo_advisor_preset;
@@ -195,6 +200,7 @@ pub use self::quant_analyst::quant_analyst_preset;
 pub use self::red_teamer::red_teamer_preset;
 pub use self::reviewer::reviewer_preset;
 pub use self::risk_analyst::risk_analyst_preset;
+pub use self::scenario_planner::scenario_planner_preset;
 pub use self::scriptwriter::scriptwriter_preset;
 pub use self::sdr_outbound::sdr_outbound_preset;
 pub use self::security::security_preset;
@@ -286,6 +292,18 @@ mod tests {
             (
                 "decision_scientist",
                 decision_scientist_preset("openrouter", "x"),
+            ),
+            (
+                "calibration_scorer",
+                calibration_scorer_preset("openrouter", "x"),
+            ),
+            (
+                "scenario_planner",
+                scenario_planner_preset("openrouter", "x"),
+            ),
+            (
+                "bayesian_priors_keeper",
+                bayesian_priors_keeper_preset("openrouter", "x"),
             ),
             ("ceo_advisor", ceo_advisor_preset("openrouter", "x")),
             ("idea_generator", idea_generator_preset("openrouter", "x")),
