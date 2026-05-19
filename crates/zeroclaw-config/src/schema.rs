@@ -544,6 +544,98 @@ pub struct MiroFishConfig {
     #[secret]
     #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
     pub api_key: Option<String>,
+
+    /// Forensic logging configuration — when enabled, persist the
+    /// raw JSON of every MiroFish HTTP call (request + response)
+    /// to disk in addition to the three asset receipts. Useful for
+    /// audit, replay, and post-hoc analysis when the receipts
+    /// alone are not enough (e.g. when MiroFish's report endpoint
+    /// changes shape between versions).
+    #[serde(default)]
+    #[nested]
+    pub logging: MiroFishLoggingConfig,
+}
+
+/// Forensic logging configuration for the MiroFish integration.
+///
+/// Distinct from the three asset receipts (`graph_id`,
+/// `simulation_id`, `report_id`) that get persisted into the
+/// deliverable. Those let you REPLAY a simulation against
+/// MiroFish's own DB. The generation log records the raw HTTP
+/// payloads at ZeroClaw's side — what we sent, what we got back —
+/// which is the only artifact that survives if MiroFish's
+/// database is wiped or migrated.
+///
+/// Cost reality: log files grow with `agents × rounds × calls`.
+/// At 500 agents × 30 rounds × 3 variants a single simulation
+/// can produce ~50-200 MB of generation logs. Default is OFF;
+/// turn on per-tenant per-simulation when forensics matter.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "mirofish-logging"]
+pub struct MiroFishLoggingConfig {
+    /// Master switch. When false, only the three receipts get
+    /// persisted (via the standard deliverable flow). When true,
+    /// every HTTP call to MiroFish gets written to disk as
+    /// described in `generation_log_dir`.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Directory where generation logs land, relative to the
+    /// active workspace root. Each simulation gets its own
+    /// subdirectory: `<dir>/<YYYY-MM-DD>/<simulation_id>/`.
+    /// Per-subdirectory files:
+    ///   - `00-health.json` — initial health-check.
+    ///   - `01-build-request.json` / `01-build-response.json`.
+    ///   - `02-entities-request.json` / `02-entities-response.json`.
+    ///   - `03-run-request.json` / `03-run-response.json`.
+    ///   - `04-generate-request.json` / `04-generate-response.json`.
+    ///   - `05-poll-<NNN>-status.json` (one per poll).
+    ///   - `06-report.json` — final report body.
+    /// All files are pretty-printed JSON so a human auditor can
+    /// open them. None of the files contain secrets — the API
+    /// key never appears in the request body.
+    #[serde(default = "default_mirofish_generation_log_dir")]
+    pub generation_log_dir: String,
+
+    /// Truncate response bodies above this byte threshold to
+    /// prevent runaway disk usage on a misbehaving MiroFish
+    /// instance. The original response is still surfaced to the
+    /// agent in-memory; only the on-disk copy gets truncated with
+    /// a `... [truncated, original NN bytes]` marker.
+    /// Default 5 MB per response.
+    #[serde(default = "default_mirofish_response_truncate_bytes")]
+    pub response_truncate_bytes: usize,
+
+    /// Number of days the generation log dir retains files
+    /// before the daemon's cleanup job deletes them. Default 90.
+    /// Match this to your audit / compliance window — for
+    /// regulated tenants you may want 365 or more.
+    #[serde(default = "default_mirofish_log_retention_days")]
+    pub retention_days: u32,
+}
+
+fn default_mirofish_generation_log_dir() -> String {
+    "mirofish-logs".to_string()
+}
+
+fn default_mirofish_response_truncate_bytes() -> usize {
+    5_242_880 // 5 MiB
+}
+
+fn default_mirofish_log_retention_days() -> u32 {
+    90
+}
+
+impl Default for MiroFishLoggingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            generation_log_dir: default_mirofish_generation_log_dir(),
+            response_truncate_bytes: default_mirofish_response_truncate_bytes(),
+            retention_days: default_mirofish_log_retention_days(),
+        }
+    }
 }
 
 fn default_mirofish_base_url() -> String {
@@ -581,6 +673,7 @@ impl Default for MiroFishConfig {
             poll_timeout_secs: default_mirofish_poll_timeout_secs(),
             seed_variants: default_mirofish_seed_variants(),
             api_key: None,
+            logging: MiroFishLoggingConfig::default(),
         }
     }
 }
@@ -11700,6 +11793,52 @@ mod mirofish_tests {
         assert!(cfg.api_key.is_none());
     }
 
+    use super::MiroFishLoggingConfig;
+
+    #[test]
+    fn mirofish_logging_default_is_off_and_safe() {
+        // Forensic logging is OPT-IN. A daemon that defaults to
+        // logging every response will saturate disk on a busy
+        // tenant. Operators turn this on per-simulation when
+        // they need replay-grade traces.
+        let cfg = MiroFishLoggingConfig::default();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.generation_log_dir, "mirofish-logs");
+        // 5 MiB truncate is generous enough for the report bodies
+        // but cuts off any pathologically-large response before it
+        // fills the disk.
+        assert_eq!(cfg.response_truncate_bytes, 5_242_880);
+        // 90 days matches the typical operator audit window.
+        assert_eq!(cfg.retention_days, 90);
+    }
+
+    #[test]
+    fn mirofish_default_logging_attached_to_root_config() {
+        // The wiring is what matters: the MiroFish root default
+        // must include a logging sub-block, otherwise downstream
+        // code panics when reading mirofish.logging.enabled.
+        let root = MiroFishConfig::default();
+        assert!(!root.logging.enabled);
+        assert_eq!(root.logging.generation_log_dir, "mirofish-logs");
+    }
+
+    #[test]
+    fn mirofish_logging_toml_round_trip() {
+        let cfg = MiroFishLoggingConfig {
+            enabled: true,
+            generation_log_dir: "forensic/mirofish".into(),
+            response_truncate_bytes: 10_485_760, // 10 MiB
+            retention_days: 365,
+        };
+        let toml = toml::to_string(&cfg).expect("must serialise");
+        let parsed: MiroFishLoggingConfig =
+            toml::from_str(&toml).expect("must deserialise");
+        assert!(parsed.enabled);
+        assert_eq!(parsed.generation_log_dir, "forensic/mirofish");
+        assert_eq!(parsed.response_truncate_bytes, 10_485_760);
+        assert_eq!(parsed.retention_days, 365);
+    }
+
     #[test]
     fn mirofish_toml_round_trip() {
         let cfg = MiroFishConfig {
@@ -11711,6 +11850,12 @@ mod mirofish_tests {
             poll_timeout_secs: 2400,
             seed_variants: 3,
             api_key: Some("op_key".into()),
+            logging: MiroFishLoggingConfig {
+                enabled: true,
+                generation_log_dir: "logs/mf".into(),
+                response_truncate_bytes: 2_097_152,
+                retention_days: 30,
+            },
         };
         let toml = toml::to_string(&cfg).expect("must serialise");
         let parsed: MiroFishConfig = toml::from_str(&toml).expect("must deserialise");

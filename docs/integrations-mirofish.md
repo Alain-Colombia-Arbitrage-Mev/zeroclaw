@@ -288,6 +288,143 @@ with `docker compose up -d` from the MiroFish repository."
 
 ---
 
+## Activating Zep for persistent personas
+
+MiroFish ships in two modes:
+
+1. **Stateless personas** (default in the bare repo). Each round
+   the simulated agents have no memory of prior rounds. Cheap
+   but produces shallower sentiment dynamics — the same agent
+   can flip-flop on consecutive rounds without anyone noticing.
+
+2. **Persistent personas via Zep**. Each agent's biography and
+   prior reactions persist across rounds and across simulations.
+   The sentiment-evolution curves track closer to real-world
+   launches, and contrarian voices stay contrarian rather than
+   regressing to mean. Cost is one Postgres container + one Zep
+   container (each ~200 MB RAM at idle).
+
+### How to activate (`deploy/mirofish-stack/`)
+
+Zep is **already wired** in the bundled docker-compose. You only
+need to supply credentials in `.env`:
+
+```bash
+openssl rand -hex 32     # → ZEP_AUTH_SECRET
+openssl rand -hex 32     # → ZEP_API_KEY (must equal ZEP_AUTH_SECRET in this config)
+openssl rand -hex 16     # → POSTGRES_ZEP_PASSWORD
+```
+
+Set the values in `.env`. `docker compose up -d` brings up `zep`
+and `postgres-zep` next to the MiroFish backend. The backend
+receives `ZEP_API_URL=http://zep:8000` and `ZEP_API_KEY` via the
+compose environment — no code change needed.
+
+### Verify Zep is actually being used
+
+```bash
+# Zep healthy:
+docker compose exec zep curl -s http://localhost:8000/healthz
+# expected: {"status":"ok"}
+
+# After a 50-agent smoke test, Zep should have 50 sessions:
+docker compose exec zep curl -s \
+    -H "Authorization: Bearer ${ZEP_API_KEY}" \
+    http://localhost:8000/api/v1/sessions | jq '.sessions | length'
+# 0 = MiroFish is silently running stateless. Check logs:
+docker compose logs mirofish-backend | grep -i zep
+```
+
+### What Zep stores per agent
+
+- **User record** — biography + persona traits from seed dossier.
+- **Session messages** — reactions across rounds; round N sees
+  round N-1.
+- **Summary** — periodic compression so context doesn't blow up
+  at round 50.
+
+Retention defaults to 90 days (`ZEP_RETENTION_DAYS` env). Bump
+for audit-grade retention or back up the `postgres-zep-data`
+volume.
+
+### Cost impact
+
+- Memory: ~400 MB extra (Postgres + Zep). Fits 4 GB host.
+- LLM tokens: embeddings via OpenRouter `text-embedding-3-small`
+  at $0.02/1M. A 500×30 simulation ≈ 150K tokens ≈ $0.003.
+  Negligible.
+- Disk: ~1 MB per agent-simulation. 100 sims × 500 agents = ~50
+  GB. Plan accordingly.
+
+### When NOT to use Zep
+
+- Smoke tests where persona realism doesn't matter. Drop the
+  `zep` + `postgres-zep` services to save 400 MB RAM.
+- Stateless A/B simulations where rounds SHOULD reset.
+
+---
+
+## Forensic generation logging
+
+The `[mirofish.logging]` config block lets the daemon record every
+HTTP call to MiroFish in addition to the three asset receipts.
+
+```toml
+[mirofish.logging]
+enabled = true
+generation_log_dir = "mirofish-logs"      # relative to workspace
+response_truncate_bytes = 5_242_880       # 5 MiB cap per response
+retention_days = 90                       # cleanup cron threshold
+```
+
+When enabled, the `market_sentiment_analyst` preset writes one
+JSON file per HTTP call under
+`<workspace>/<generation_log_dir>/<YYYY-MM-DD>/<simulation_id>/`:
+
+| File | Content |
+|------|---------|
+| `00-health.json` | Health-check response |
+| `01-build-request.json` + `01-build-response.json` | Graph build |
+| `02-entities-request.json` + `02-entities-response.json` | Persona audit |
+| `03-run-request.json` + `03-run-response.json` | Simulation kickoff |
+| `04-generate-request.json` + `04-generate-response.json` | Report request |
+| `05-poll-NNN-status.json` | One per polling iteration |
+| `06-report.json` | Final report |
+
+Pretty-printed, 2-space indent. No API keys in any body — the
+preset prompt enforces this explicitly.
+
+`promtail-config.yaml` in `deploy/mirofish-stack/` auto-tails
+this directory into Loki with labels `service=market_sentiment_
+analyst`, `sim_id=`, `stage=`. In Grafana:
+
+```
+{service="market_sentiment_analyst", sim_id="<id>"} | line_format "{{.stage}}"
+```
+
+gives the full transcript chronologically.
+
+### When to enable
+
+- Post-launch retros — replay against ZeroClaw's trail without
+  needing MiroFish.
+- Disputed predictions — ground-truth of what the model saw vs
+  what the operator interpreted.
+- Regulated tenants requiring full transcripts.
+
+### When NOT to enable
+
+- High-volume tenants. 500×30×3 ≈ 50-200 MB per simulation.
+  10/day = 1-2 GB/day. Size disk for it or leave off.
+- Smoke tests at 50×10 produce ~5-10 MB; off is reasonable.
+
+### Cleanup
+
+Files older than `retention_days` are deleted by the daemon's
+cleanup pass (nightly). Pure filesystem, no DB.
+
+---
+
 ## See also
 
 - MiroFish repo — [github.com/666ghj/MiroFish](https://github.com/666ghj/MiroFish)
@@ -295,3 +432,4 @@ with `docker compose up -d` from the MiroFish repository."
 - `crates/zeroclaw-config/src/agent_presets/market_sentiment_analyst.rs`
   — the preset
 - `docs/hosting-hetzner.md` — VPS the MiroFish sidecar
+- `deploy/mirofish-stack/` — single-host docker-compose

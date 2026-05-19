@@ -1,0 +1,63 @@
+# Loki config — single-binary mode, 30-day retention.
+#
+# Sized for solo / small-team usage. Stores chunks in the
+# 'loki-data' Docker volume; for production move chunks to S3-
+# compatible storage (Hetzner Object Storage, Backblaze B2).
+#
+# Audit logs from ZeroClaw + MiroFish flow in via the otel-
+# collector (loki exporter) AND directly via promtail (which
+# tails the workspace's audit/ JSONL files).
+#
+# 30-day retention matches the default MiroFish forensic log
+# retention. Bump both together if compliance demands longer.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # 30-day retention — matches the MiroFish forensic log default.
+  retention_period: 720h
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  max_query_length: 30d
+  # Big enough for audit JSONL with full request bodies. A
+  # zeroclaw audit line tops out around 200-500 KB when
+  # include_request_bodies is true. 2 MiB cap covers it with
+  # margin.
+  per_stream_rate_limit: 10MB
+  per_stream_rate_limit_burst: 20MB
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem
+
+ruler:
+  alertmanager_url: http://localhost:9093

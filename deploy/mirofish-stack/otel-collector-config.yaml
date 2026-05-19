@@ -1,0 +1,70 @@
+# OpenTelemetry Collector config for the MiroFish stack.
+#
+# Receives OTLP traces / metrics / logs from ZeroClaw daemon and
+# MiroFish backend (when MiroFish gains OTLP support) and forwards
+# them: logs → Loki, traces → tempo or stdout for now, metrics →
+# Prometheus-compatible endpoint.
+#
+# Minimal config — operators add receivers (Prometheus scrape,
+# Filelog) and exporters (Tempo, Jaeger, OTel cloud) as needed.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Batch reduces network chatter to Loki. 1s linger fits a
+  # bursty audit-log pattern.
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Drop very chatty internal spans. The audit value is in
+  # tool calls and HTTP requests, not in every spawn / await.
+  filter/drop_noisy:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["span.kind"] == "internal" and attributes["span.name"] =~ "tokio.*"'
+
+  # Resource attributes that every signal carries.
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:DEPLOY_ENV:-prod}
+        action: upsert
+
+exporters:
+  # Loki receives logs only — traces and metrics go elsewhere.
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    default_labels_enabled:
+      exporter: false
+      job: true
+
+  # Traces: stdout for now (operator can swap to Tempo or
+  # Honeycomb later).
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/drop_noisy, batch, resource]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [loki]
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]
+  telemetry:
+    logs:
+      level: info

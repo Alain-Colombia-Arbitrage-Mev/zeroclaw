@@ -1,0 +1,285 @@
+# ZeroClaw + MiroFish + Observability stack
+#
+# Single-host docker-compose that brings up the full sentiment-
+# simulation pipeline plus audit observability (OpenTelemetry +
+# Loki + Grafana). Tuned for a Hetzner cax21 (4 vCPU ARM / 8 GB
+# RAM) or equivalent. Smaller hosts work — drop Grafana and
+# scale Loki retention down to 7d.
+#
+# Bring up:
+#   cd deploy/mirofish-stack/
+#   cp .env.example .env       # fill in OPENROUTER_API_KEY etc
+#   docker compose up -d
+#
+# Tear down:
+#   docker compose down -v     # -v wipes volumes too
+#
+# Services and their default ports:
+#   - mirofish-backend          :5001  (HTTP API ZeroClaw calls)
+#   - mirofish-frontend         :8002  (optional web UI to inspect runs)
+#   - zep                       :8000  (long-memory for MiroFish personas)
+#   - postgres-zep              :5432  (zep's database)
+#   - zeroclaw                  :42617 (paired gateway)
+#   - falkordb                  :6379  (knowledge graph + redis)
+#   - otel-collector            :4317  (OTLP gRPC), :4318 (OTLP HTTP)
+#   - loki                      :3100  (audit log ingestion)
+#   - promtail                  (sidecar shipping logs to Loki)
+#   - grafana                   :3000  (dashboards over Loki + traces)
+#
+# Health verification after `docker compose up -d`:
+#   curl -s localhost:5001/api/graph/project/list | jq .   # MiroFish
+#   curl -s localhost:42617/health                          # ZeroClaw
+#   curl -s localhost:3100/ready                            # Loki
+#   curl -s localhost:3000/api/health                       # Grafana
+#
+# Notes:
+#   - ZeroClaw runs in 'paired' mode — first call gets a pairing
+#     token via the WebView/Tauri client. For headless deploys
+#     set ZEROCLAW_AUTO_PAIR_TOKEN in .env to skip the dance.
+#   - MiroFish backend points to OpenRouter by default — see
+#     .env.example for the variables.
+#   - Loki retention is 30d (matches MiroFish forensic log default).
+#   - All inter-service traffic stays on the 'mirofish_internal'
+#     network. Only the public-facing services (zeroclaw, grafana,
+#     mirofish-frontend) bind to the host.
+
+services:
+  # ── MiroFish ─────────────────────────────────────────────────────
+  mirofish-backend:
+    image: ghcr.io/666ghj/mirofish-backend:latest
+    container_name: mirofish-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5001:5001"
+    environment:
+      # Upstream LLM via OpenRouter — see .env
+      LLM_API_KEY: ${OPENROUTER_API_KEY}
+      LLM_BASE_URL: https://openrouter.ai/api/v1
+      LLM_MODEL: ${MIROFISH_LLM_MODEL:-deepseek/deepseek-chat}
+      # Long-term agent memory via Zep — pointed at the in-stack
+      # instance below; switch to ZEP_CLOUD_API_KEY for managed.
+      ZEP_API_URL: http://zep:8000
+      ZEP_API_KEY: ${ZEP_API_KEY:-local-dev-key}
+      # OpenTelemetry — if mirofish-backend supports OTLP later.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: mirofish-backend
+    depends_on:
+      zep:
+        condition: service_healthy
+    networks:
+      - mirofish_internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/graph/project/list"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mirofish-frontend:
+    image: ghcr.io/666ghj/mirofish-frontend:latest
+    container_name: mirofish-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:80"
+    environment:
+      VITE_BACKEND_URL: http://mirofish-backend:5001
+    depends_on:
+      - mirofish-backend
+    networks:
+      - mirofish_internal
+
+  # ── Zep (long-term agent memory for MiroFish personas) ───────────
+  postgres-zep:
+    image: postgres:16-alpine
+    container_name: postgres-zep
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zep
+      POSTGRES_PASSWORD: ${POSTGRES_ZEP_PASSWORD:-zep-local-pass}
+      POSTGRES_DB: zep
+    volumes:
+      - postgres-zep-data:/var/lib/postgresql/data
+    networks:
+      - mirofish_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zep"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zep:
+    image: ghcr.io/getzep/zep:latest
+    container_name: zep
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      ZEP_STORE_TYPE: postgres
+      ZEP_STORE_POSTGRES_DSN: postgres://zep:${POSTGRES_ZEP_PASSWORD:-zep-local-pass}@postgres-zep:5432/zep?sslmode=disable
+      ZEP_AUTH_REQUIRED: "true"
+      ZEP_AUTH_SECRET: ${ZEP_AUTH_SECRET:-change-me-in-prod}
+      # Zep uses its own embedder. Point it at OpenRouter for a
+      # cheap embedding model, or to a self-hosted embedder.
+      ZEP_OPENAI_API_KEY: ${OPENROUTER_API_KEY}
+      ZEP_OPENAI_BASE_URL: https://openrouter.ai/api/v1
+    depends_on:
+      postgres-zep:
+        condition: service_healthy
+    networks:
+      - mirofish_internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── ZeroClaw daemon ──────────────────────────────────────────────
+  zeroclaw:
+    image: ghcr.io/zeroclaw-labs/zeroclaw:latest
+    container_name: zeroclaw
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:42617:42617"
+    environment:
+      RUST_LOG: info,zeroclaw_runtime=debug
+      ZEROCLAW_AUTO_PAIR_TOKEN: ${ZEROCLAW_AUTO_PAIR_TOKEN:-}
+      # Point ZeroClaw at the in-stack MiroFish, FalkorDB, and OTel.
+      MIROFISH_BASE_URL: http://mirofish-backend:5001
+      ZEROCLAW_MEMORY_FALKORDB_URL: redis://falkordb:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: zeroclaw-daemon
+    volumes:
+      # Operator config: edit on the host, hot-reload on save.
+      - ./config:/etc/zeroclaw:ro
+      # Workspace: deliverables, memory, audit logs persist across
+      # restarts.
+      - zeroclaw-workspace:/var/lib/zeroclaw
+    depends_on:
+      mirofish-backend:
+        condition: service_healthy
+      falkordb:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+    networks:
+      - mirofish_internal
+      - public_egress
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ── FalkorDB (knowledge graph for ZeroClaw memory) ──────────────
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: falkordb
+    restart: unless-stopped
+    ports:
+      # Only ZeroClaw needs to reach it — keep on internal network.
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - falkordb-data:/data
+    networks:
+      - mirofish_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── OpenTelemetry collector ──────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+    networks:
+      - mirofish_internal
+
+  # ── Loki (audit log aggregation) ─────────────────────────────────
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+    volumes:
+      - ./loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks:
+      - mirofish_internal
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Promtail (ships zeroclaw + mirofish logs into Loki) ──────────
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: promtail
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/promtail-config.yaml"]
+    volumes:
+      - ./promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      # The docker socket lets promtail follow container stdout.
+      # Read-only mount — promtail never writes to docker.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Also follow the workspace dir for ZeroClaw audit JSONL.
+      - zeroclaw-workspace:/zeroclaw-workspace:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - mirofish_internal
+
+  # ── Grafana (dashboards over Loki + OTel traces) ─────────────────
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin-change-me}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - mirofish_internal
+
+# Internal network: only services that need cross-talk.
+# public_egress: only the daemon hits the open internet (LLM API,
+# OpenRouter, etc.) — keeps MiroFish + FalkorDB + Zep isolated.
+networks:
+  mirofish_internal:
+    driver: bridge
+  public_egress:
+    driver: bridge
+
+volumes:
+  postgres-zep-data:
+  zeroclaw-workspace:
+  falkordb-data:
+  loki-data:
+  grafana-data:

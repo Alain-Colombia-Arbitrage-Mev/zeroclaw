@@ -53,6 +53,13 @@ fn sentiment_tool_allowlist() -> Vec<String> {
         "canvas",
         "content_search",
         "file_read",
+        // Granted ONLY for forensic generation logging — the
+        // prompt restricts writes to <mirofish.logging.
+        // generation_log_dir>. Without file_write the
+        // generation_log_dir feature would have no implementation
+        // path until the native mirofish_simulate tool lands.
+        "file_write",
+        "deliverable_write",
         "kg_extract",
         "calculator",
     ]
@@ -88,7 +95,19 @@ stop — do NOT fabricate sentiment without running the simulation.\n\n\
 and `default_rounds` (10) from config — small enough that the \
 first invocation costs pennies of upstream LLM tokens. Scale up \
 ONLY after the persona-mix audit confirms the seed dossier was \
-right. Production runs typically use 500 agents × 30 rounds.
+right. Production runs typically use 500 agents × 30 rounds.\n\n\
+**Forensic logging.** When `[mirofish.logging] enabled = true` in \
+config, persist every HTTP call's raw JSON to disk under \
+`<workspace>/<mirofish.logging.generation_log_dir>/<YYYY-MM-DD>/<simulation_id>/` \
+using `file_write`. Files (pretty-printed JSON, 2-space indent): \
+`00-health.json`, `01-build-request.json` + `01-build-response.json`, \
+`02-entities-request.json` + `02-entities-response.json`, \
+`03-run-request.json` + `03-run-response.json`, \
+`04-generate-request.json` + `04-generate-response.json`, \
+`05-poll-NNN-status.json` (one per poll), `06-report.json`. NEVER \
+write the API key into any file. When logging is disabled, only \
+the three receipts go to the deliverable — same workflow, no \
+on-disk transcripts.
 
 Operating principles:
 
@@ -322,11 +341,34 @@ mod tests {
     }
 
     #[test]
-    fn market_sentiment_analyst_preset_does_not_grant_shell_or_write() {
+    fn market_sentiment_analyst_preset_does_not_grant_shell_or_edit() {
+        // file_write IS granted (for forensic generation logging
+        // to mirofish.logging.generation_log_dir). shell and
+        // file_edit stay denied — the agent should never modify
+        // source code or shell out.
         let cfg = market_sentiment_analyst_preset("openrouter", "any/model");
-        for forbidden in ["shell", "file_write", "file_edit"] {
-            assert!(!cfg.allowed_tools.iter().any(|t| t == forbidden));
+        for forbidden in ["shell", "file_edit", "git_operations", "opencode_cli"] {
+            assert!(
+                !cfg.allowed_tools.iter().any(|t| t == forbidden),
+                "must not include {forbidden}"
+            );
         }
+    }
+
+    #[test]
+    fn market_sentiment_analyst_grants_file_write_for_forensic_logging() {
+        let cfg = market_sentiment_analyst_preset("openrouter", "any/model");
+        assert!(cfg.allowed_tools.iter().any(|t| t == "file_write"));
+    }
+
+    #[test]
+    fn market_sentiment_analyst_prompt_references_generation_log_dir() {
+        // The new logging field has to be surfaced in the prompt
+        // or the model has no idea where to persist forensic JSON.
+        let cfg = market_sentiment_analyst_preset("openrouter", "any/model");
+        let prompt = cfg.system_prompt.unwrap();
+        assert!(prompt.contains("[mirofish.logging]"));
+        assert!(prompt.contains("generation_log_dir"));
     }
 
     #[test]

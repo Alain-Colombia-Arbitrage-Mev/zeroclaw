@@ -1,0 +1,24 @@
+# Grafana datasource provisioning — wires Loki at first boot
+# so the operator doesn't have to add it manually.
+
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: true
+    jsonData:
+      maxLines: 5000
+      derivedFields:
+        # If an audit log line contains a tenant_id, surface it
+        # as a clickable filter chip.
+        - matcherRegex: '"tenant_id":"([^"]+)"'
+          name: tenant
+          url: '?orgId=1&var-tenant=$${__value.raw}'
+        # Same for simulation_id — click to jump to all logs
+        # related to that MiroFish run.
+        - matcherRegex: '"simulation_id":"([^"]+)"'
+          name: simulation_id
+          url: '?orgId=1&var-sim=$${__value.raw}'
