@@ -117,6 +117,7 @@ mod risk_analyst;
 mod scriptwriter;
 mod sdr_outbound;
 mod security;
+mod self_funding_growth_strategist;
 mod server_architect;
 mod sovereign_advisor;
 mod support_agent;
@@ -186,6 +187,7 @@ pub use self::risk_analyst::risk_analyst_preset;
 pub use self::scriptwriter::scriptwriter_preset;
 pub use self::sdr_outbound::sdr_outbound_preset;
 pub use self::security::security_preset;
+pub use self::self_funding_growth_strategist::self_funding_growth_strategist_preset;
 pub use self::server_architect::server_architect_preset;
 pub use self::sovereign_advisor::sovereign_advisor_preset;
 pub use self::support_agent::support_agent_preset;
@@ -235,6 +237,10 @@ mod tests {
             ),
             ("product_manager", product_manager_preset("openrouter", "x")),
             ("growth_hacker", growth_hacker_preset("openrouter", "x")),
+            (
+                "self_funding_growth_strategist",
+                self_funding_growth_strategist_preset("openrouter", "x"),
+            ),
             (
                 "pricing_strategist",
                 pricing_strategist_preset("openrouter", "x"),
