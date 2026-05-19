@@ -44,6 +44,9 @@ fn support_agent_tool_allowlist() -> Vec<String> {
         "content_search",
         "escalate",
         "delegate",
+        // Outbound team notification when a ticket is created /
+        // escalated. Subject to [email_send] allowlist + rate limit.
+        "email_send",
     ]
     .iter()
     .map(|s| (*s).to_string())
@@ -86,6 +89,48 @@ Operating principles:
   intent of this message, last touch timestamp, sentiment. The next \
   agent that touches this contact should NOT have to re-discover \
   who they are.
+- **Ticket / assign / notify workflow.** When the inbound message \
+  requires WORK by a specialist (not just a one-shot reply), run \
+  the four-step ticket workflow before composing the reply:\n\
+  1. **Create the ticket**. `entity_upsert` type='ticket' with: \
+     id=`tkt-<YYYY-MM-DD>-<6-char-slug>`, title=one-line summary, \
+     status='open', severity=`low|medium|high|critical`, \
+     contact_channel + contact_id, opened_at=ISO timestamp, \
+     opened_by='support_agent', body=full inbound text. Severity \
+     rules: 'critical' = service down / data loss / legal threat; \
+     'high' = blocked customer + revenue exposure; 'medium' = \
+     blocked customer no revenue exposure; 'low' = general \
+     inquiry. NEVER guess; default to 'medium' when unclear and \
+     ask the customer.\n\
+  2. **Assign the specialist**. `delegate` to the right preset:\n\
+     - billing / refund / invoice → `treasurer` or `finance_controller`.\n\
+     - bug / outage / technical → `qa` or `coder` via planner.\n\
+     - feature request → `product_manager`.\n\
+     - legal / regulatory → `legal_compliance` or `general_counsel`.\n\
+     - account / churn / expansion → `customer_success`.\n\
+     - sales / pricing — `account_executive` or `pricing_strategist`.\n\
+     - press / community → `marketing` or `community_growth_specialist`.\n\
+     Update the ticket's `assigned_agent` field via second \
+     `entity_upsert` call.\n\
+  3. **Notify the team via email**. `email_send` with: subject \
+     `[<severity>] <ticket-id> — <one-line summary>`, body = a \
+     plain-text recap (ticket id, severity, contact, channel, \
+     original message, action taken, next reviewer), tags = \
+     [ticket_id, severity, assigned_agent]. Recipient: the \
+     operator-configured `default_team_distribution` from \
+     `[email_send]`. ONLY email when severity is `medium` or \
+     above — `low` tickets get logged but not emailed (avoid \
+     team-inbox spam).\n\
+  4. **Reply to the customer**. Acknowledge in their channel \
+     with the ticket id ('Tu solicitud quedó registrada como \
+     <ticket-id>. Te responderemos en <SLA>.') and the SLA from \
+     `company_manifest` `[support] sla_<severity>_hours`. Do \
+     NOT promise resolution; promise next-touch.\n\
+  The four steps are atomic in principle but live in distinct \
+  tool calls. If `email_send` fails (provider error, allowlist \
+  miss, rate limit), the ticket is STILL created and the customer \
+  gets their reply — the operator just doesn't get the email. \
+  `escalate` instead so a human sees the failure.
 - Escalate by stakes. If the message asks for: refund > $X / legal \
   threat / press inquiry / regulatory question / partnership > \
   pilot scope / fundraise question — DO NOT answer; \
@@ -128,5 +173,98 @@ mod tests {
         assert!(cfg.allowed_tools.iter().any(|t| t == "escalate"));
         assert!(cfg.allowed_tools.iter().any(|t| t == "entity_upsert"));
         assert!(cfg.allowed_tools.iter().any(|t| t == "decision_log"));
+    }
+
+    #[test]
+    fn support_agent_grants_email_send_for_team_notification() {
+        let cfg = support_agent_preset("openrouter", "x");
+        assert!(
+            cfg.allowed_tools.iter().any(|t| t == "email_send"),
+            "support_agent needs email_send for the ticket → notify-team workflow"
+        );
+    }
+
+    #[test]
+    fn support_agent_grants_delegate_for_specialist_assignment() {
+        let cfg = support_agent_preset("openrouter", "x");
+        assert!(
+            cfg.allowed_tools.iter().any(|t| t == "delegate"),
+            "support_agent needs delegate to assign tickets to specialists"
+        );
+    }
+
+    #[test]
+    fn support_agent_prompt_enforces_ticket_workflow() {
+        let cfg = support_agent_preset("openrouter", "x");
+        let prompt = cfg.system_prompt.expect("must set a system prompt");
+        for needle in [
+            "Ticket / assign / notify workflow",
+            "Create the ticket",
+            "Assign the specialist",
+            "Notify the team via email",
+            "Reply to the customer",
+            "entity_upsert",
+            "email_send",
+            "default_team_distribution",
+        ] {
+            assert!(prompt.contains(needle), "missing: '{needle}'");
+        }
+    }
+
+    #[test]
+    fn support_agent_prompt_names_severity_taxonomy() {
+        // Severity classification rules must be in the prompt or
+        // the agent invents inconsistent severities across runs.
+        let cfg = support_agent_preset("openrouter", "x");
+        let prompt = cfg.system_prompt.unwrap();
+        for severity in ["critical", "high", "medium", "low"] {
+            assert!(
+                prompt.contains(severity),
+                "missing severity level: '{severity}'"
+            );
+        }
+    }
+
+    #[test]
+    fn support_agent_prompt_routes_to_right_specialists() {
+        // The assignment table is the value-add of having this
+        // workflow centralized — without it the agent picks
+        // delegates inconsistently.
+        let cfg = support_agent_preset("openrouter", "x");
+        let prompt = cfg.system_prompt.unwrap();
+        for specialist in [
+            "treasurer",
+            "finance_controller",
+            "qa",
+            "product_manager",
+            "legal_compliance",
+            "customer_success",
+            "account_executive",
+            "marketing",
+        ] {
+            assert!(
+                prompt.contains(specialist),
+                "missing specialist routing: '{specialist}'"
+            );
+        }
+    }
+
+    #[test]
+    fn support_agent_email_send_skips_low_severity_to_avoid_spam() {
+        // Critical rule: medium+ severity triggers email; low
+        // severity logs but doesn't email. Without this in the
+        // prompt the team inbox fills with non-urgent FYIs.
+        let cfg = support_agent_preset("openrouter", "x");
+        let prompt = cfg.system_prompt.unwrap();
+        assert!(prompt.contains("ONLY email when severity is `medium` or"));
+    }
+
+    #[test]
+    fn support_agent_handles_email_send_failure_gracefully() {
+        // If email_send fails, ticket is still created and
+        // customer still replies. Operator just escalates.
+        let cfg = support_agent_preset("openrouter", "x");
+        let prompt = cfg.system_prompt.unwrap();
+        assert!(prompt.contains("If `email_send` fails"));
     }
 }

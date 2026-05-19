@@ -458,6 +458,113 @@ pub struct Config {
     #[serde(default)]
     #[nested]
     pub shell_tool: ShellToolConfig,
+
+    /// Email send tool configuration (`[email_send]`). Used by
+    /// support_agent and other agents that need to notify a team
+    /// distribution list when a ticket is created or escalated.
+    #[serde(default)]
+    #[nested]
+    pub email_send: EmailSendConfig,
+}
+
+/// Email send tool configuration (`[email_send]`).
+///
+/// Transactional email is fundamentally different from the
+/// `email_channel` (inbound IMAP/SMTP receiver). This config drives
+/// the OUTBOUND tool agents call to notify humans — typically a
+/// team distribution list when a support ticket is created or a
+/// captain decision needs human ratification.
+///
+/// MVP supports the Resend HTTP provider only (one of the cheapest
+/// transactional email APIs at $0 for first 100/day, $20/mo
+/// after). SMTP backend is reserved for a follow-up; both can
+/// coexist via the `provider` field.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "email-send"]
+pub struct EmailSendConfig {
+    /// Enable the `email_send` tool. When false, agents calling
+    /// the tool get a clear 'email_send disabled — set
+    /// `[email_send] enabled = true`' response and continue.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Provider backend. MVP supports "resend". Future: "smtp",
+    /// "ses", "sendgrid". Unknown values are rejected at tool
+    /// construction time.
+    #[serde(default = "default_email_send_provider")]
+    pub provider: String,
+
+    /// API key for the chosen provider. Stored in the keyring
+    /// per the `#[secret]` attribute — operators set it via
+    /// `zeroclaw secret set email_send.api_key sk-...`.
+    #[serde(default)]
+    #[secret]
+    #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
+    pub api_key: Option<String>,
+
+    /// `From:` address every outbound email uses. Must be a
+    /// verified sender at the provider — for Resend, the domain
+    /// must be verified via DNS records before this address can
+    /// send. Format: `Operator Name <ops@example.com>` or the
+    /// bare email.
+    #[serde(default)]
+    pub from_address: String,
+
+    /// Default team distribution list — the address agents email
+    /// when no specific recipient was named. Typically a group
+    /// alias like `support-team@example.com` or a shared inbox.
+    /// Set to `None` to require explicit `to` on every call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_team_distribution: Option<String>,
+
+    /// Allowlist of recipient addresses or domains. When
+    /// non-empty, ONLY addresses matching one of these may
+    /// receive email — defense against an agent exfiltrating
+    /// data via a crafted recipient. Domain match (`example.com`)
+    /// covers any address at that domain; exact match
+    /// (`ops@example.com`) covers the specific mailbox.
+    #[serde(default)]
+    pub allowed_recipients: Vec<String>,
+
+    /// Per-hour cap on outbound emails. Defense against an agent
+    /// in a tight loop spam-emailing the team. Default 60/hour
+    /// (one per minute) — bump for active support operations.
+    #[serde(default = "default_email_send_rate_limit_per_hour")]
+    pub rate_limit_per_hour: u32,
+
+    /// HTTP request timeout in seconds when calling the provider.
+    /// Default 30s covers Resend's typical 1-3s latency with
+    /// margin.
+    #[serde(default = "default_email_send_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+fn default_email_send_provider() -> String {
+    "resend".to_string()
+}
+
+fn default_email_send_rate_limit_per_hour() -> u32 {
+    60
+}
+
+fn default_email_send_timeout_secs() -> u64 {
+    30
+}
+
+impl Default for EmailSendConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_email_send_provider(),
+            api_key: None,
+            from_address: String::new(),
+            default_team_distribution: None,
+            allowed_recipients: Vec::new(),
+            rate_limit_per_hour: default_email_send_rate_limit_per_hour(),
+            timeout_secs: default_email_send_timeout_secs(),
+        }
+    }
 }
 
 /// Multi-client workspace isolation configuration.
@@ -9451,6 +9558,7 @@ impl Default for Config {
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
+            email_send: EmailSendConfig::default(),
         }
     }
 }
@@ -12140,6 +12248,7 @@ auto_save = true
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
+            email_send: EmailSendConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };
         // Provider fields are now resolved directly — no cache needed.
@@ -12709,6 +12818,7 @@ default_temperature = 0.7
             codex_cli: CodexCliConfig::default(),
             gemini_cli: GeminiCliConfig::default(),
             opencode_cli: OpenCodeCliConfig::default(),
+            email_send: EmailSendConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
         };

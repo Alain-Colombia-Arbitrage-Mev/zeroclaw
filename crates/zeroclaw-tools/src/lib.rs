@@ -23,6 +23,7 @@ pub mod data_management;
 pub mod decision_log;
 pub mod deliverable_write;
 pub mod discord_search;
+pub mod email_send;
 pub mod entity_upsert;
 pub mod escalate;
 pub mod file_edit;
