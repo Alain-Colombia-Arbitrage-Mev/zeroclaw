@@ -1046,7 +1046,21 @@ pub async fn handle_api_knowledge_graph_build(
             let graph_path = workspace_dir.join("graphify-out").join("graph.json");
             let graph_exists = graph_path.is_file();
 
-            let status = if success && graph_exists {
+            // Treat "no code files to index" as a benign no-op, not
+            // a 500. Graphify exits 1 in this case because its own
+            // update step reports "Nothing to update or rebuild
+            // failed" — but the workspace having no code files is
+            // a perfectly valid state for a fresh tenant, a docs-
+            // only workspace, or a daemon that hasn't been pointed
+            // at a codebase yet. We return 200 with a structured
+            // `no_op = true` flag so callers (the dashboard, an
+            // agent) can distinguish 'ran fine, nothing to do' from
+            // 'graphify crashed'.
+            let no_op_no_code_files = !success
+                && stdout.contains("No code files found")
+                && !graph_exists;
+
+            let status = if (success && graph_exists) || no_op_no_code_files {
                 StatusCode::OK
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
@@ -1055,7 +1069,8 @@ pub async fn handle_api_knowledge_graph_build(
             (
                 status,
                 Json(serde_json::json!({
-                    "success": success && graph_exists,
+                    "success": (success && graph_exists) || no_op_no_code_files,
+                    "no_op": no_op_no_code_files,
                     "graph_exists": graph_exists,
                     "graph_path": graph_path.display().to_string(),
                     "stdout": stdout,

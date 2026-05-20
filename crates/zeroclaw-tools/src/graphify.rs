@@ -259,10 +259,24 @@ impl Tool for GraphifyTool {
                     stdout.truncate(b);
                     stdout.push_str("\n... [output truncated at 4 MB]");
                 }
+
+                // Treat 'no code files to index' as a benign no-op
+                // rather than a tool failure. Graphify's update
+                // step exits 1 with 'Nothing to update or rebuild
+                // failed' when the target directory contains no
+                // source code — a valid state for a docs-only
+                // workspace or fresh tenant. Without this softening,
+                // the agent gets an error result and either retries
+                // pointlessly or escalates the false alarm.
+                let raw_success = output.status.success();
+                let no_op_no_code_files =
+                    !raw_success && stdout.contains("No code files found");
+                let success = raw_success || no_op_no_code_files;
+
                 Ok(ToolResult {
-                    success: output.status.success(),
+                    success,
                     output: stdout,
-                    error: if stderr.is_empty() {
+                    error: if no_op_no_code_files || stderr.is_empty() {
                         None
                     } else {
                         Some(stderr)
