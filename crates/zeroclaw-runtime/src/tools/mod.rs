@@ -107,6 +107,7 @@ pub use zeroclaw_tools::screenshot::ScreenshotTool;
 pub use zeroclaw_tools::sessions::{
     SessionDeleteTool, SessionResetTool, SessionsHistoryTool, SessionsListTool, SessionsSendTool,
 };
+pub use zeroclaw_tools::socialclaw::SocialclawTool;
 pub use zeroclaw_tools::swarm::SwarmTool;
 pub use zeroclaw_tools::text_browser::TextBrowserTool;
 pub use zeroclaw_tools::tool_search::ToolSearchTool;
@@ -668,6 +669,14 @@ pub fn all_tools_with_runtime(
         tool_arcs.push(Arc::new(OpenCodeCliTool::new(
             security.clone(),
             root_config.opencode_cli.clone(),
+        )));
+    }
+
+    // SocialClaw publishing tool
+    if root_config.socialclaw.enabled {
+        tool_arcs.push(Arc::new(SocialclawTool::new(
+            security.clone(),
+            root_config.socialclaw.clone(),
         )));
     }
 
