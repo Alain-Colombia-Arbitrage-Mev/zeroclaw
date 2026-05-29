@@ -14,9 +14,18 @@ import {
   KeyRound,
   AlertCircle,
   QrCode,
+  Mail,
+  UserPlus,
+  X,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { getAdminPairCode } from '../lib/api';
+import {
+  approveAccessRequest,
+  denyAccessRequest,
+  getAdminPairCode,
+  listAccessRequests,
+} from '../lib/api';
+import type { AccessRequest } from '../types/api';
 
 interface Device {
   id: string;
@@ -25,6 +34,13 @@ interface Device {
   paired_at: string;
   last_seen: string;
   ip_address: string | null;
+}
+
+interface ApprovedCode {
+  request_id: string;
+  email: string;
+  name: string;
+  pair_code: string;
 }
 
 const PAIR_CODE_TTL_SEC = 300; // server-side TTL for pair codes
@@ -38,6 +54,12 @@ export default function Pairing() {
   const [copied, setCopied] = useState(false);
   const [, tick] = useState(0);
   const tickRef = useRef<number | null>(null);
+
+  // Public access-request queue.
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [approvedCode, setApprovedCode] = useState<ApprovedCode | null>(null);
+  const [approvedCopied, setApprovedCopied] = useState(false);
 
   const token = localStorage.getItem('zeroclaw_token') || '';
 
@@ -84,6 +106,58 @@ export default function Pairing() {
   useEffect(() => {
     fetchDevices();
   }, [fetchDevices]);
+
+  // Pending access requests — refresh on mount and every 30s.
+  const fetchRequests = useCallback(async () => {
+    try {
+      const list = await listAccessRequests();
+      setAccessRequests(list);
+      setRequestError(null);
+    } catch (err: unknown) {
+      setRequestError(err instanceof Error ? err.message : 'Failed to load access requests');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRequests();
+    const id = window.setInterval(fetchRequests, 30000);
+    return () => window.clearInterval(id);
+  }, [fetchRequests]);
+
+  const approveRequest = async (id: string) => {
+    try {
+      const result = await approveAccessRequest(id);
+      setApprovedCode(result);
+      setApprovedCopied(false);
+      // Optimistically remove from list — server already deleted it.
+      setAccessRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err: unknown) {
+      setRequestError(err instanceof Error ? err.message : 'Approve failed');
+    }
+  };
+
+  const denyRequest = async (id: string, email: string) => {
+    if (!window.confirm(`Deny access request from ${email}? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await denyAccessRequest(id);
+      setAccessRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err: unknown) {
+      setRequestError(err instanceof Error ? err.message : 'Deny failed');
+    }
+  };
+
+  const copyApprovedCode = async () => {
+    if (!approvedCode) return;
+    try {
+      await navigator.clipboard.writeText(approvedCode.pair_code);
+      setApprovedCopied(true);
+      window.setTimeout(() => setApprovedCopied(false), 1800);
+    } catch {
+      // clipboard blocked
+    }
+  };
 
   const issuePairCode = async () => {
     setError(null);
@@ -274,6 +348,232 @@ export default function Pairing() {
           >
             ×
           </button>
+        </div>
+      )}
+
+      {/* ── PNL-PENDING · Public access requests awaiting review ── */}
+      <div
+        className="rounded border overflow-hidden"
+        style={{
+          background: 'rgba(12, 16, 24, 0.85)',
+          borderColor:
+            accessRequests.length > 0
+              ? 'rgba(252, 211, 77, 0.45)'
+              : 'rgba(125, 211, 252, 0.18)',
+          borderLeft:
+            accessRequests.length > 0
+              ? '3px solid #FCD34D'
+              : '3px solid rgba(125, 211, 252, 0.18)',
+        }}
+      >
+        <div
+          className="px-3 py-2 border-b text-[10px] flex items-center justify-between"
+          style={{
+            borderColor: 'rgba(125, 211, 252, 0.1)',
+            letterSpacing: '0.3em',
+            background: 'rgba(125, 211, 252, 0.04)',
+            color: accessRequests.length > 0 ? '#FCD34D' : '#5BA8D9',
+          }}
+        >
+          <span className="inline-flex items-center gap-2">
+            <UserPlus className="h-3 w-3" />
+            PNL-PENDING · ACCESS REQUESTS · {accessRequests.length}{' '}
+            {accessRequests.length === 1 ? 'WAITING' : 'WAITING'}
+          </span>
+          <button
+            onClick={fetchRequests}
+            className="px-2 py-0.5 inline-flex items-center gap-1 rounded-sm border"
+            style={{
+              borderColor: 'rgba(125, 211, 252, 0.3)',
+              color: '#7DD3FC',
+              letterSpacing: '0.2em',
+              fontSize: 9,
+            }}
+            title="Reload access-request queue"
+          >
+            <RefreshCw className="h-2.5 w-2.5" /> SYNC
+          </button>
+        </div>
+
+        {requestError && (
+          <div
+            className="px-4 py-2 text-[10px]"
+            style={{
+              color: '#FCA5A5',
+              background: 'rgba(248, 113, 113, 0.06)',
+              letterSpacing: '0.06em',
+            }}
+          >
+            ERR · {requestError}
+          </div>
+        )}
+
+        {accessRequests.length === 0 ? (
+          <div
+            className="px-4 py-6 text-center text-[11px]"
+            style={{
+              color: '#5BA8D9',
+              letterSpacing: '0.2em',
+            }}
+          >
+            ▸ NO PENDING REQUESTS · QUEUE IS CLEAR
+          </div>
+        ) : (
+          <table className="w-full text-[10px] tabular-nums">
+            <thead>
+              <tr style={{ color: '#5BA8D9' }}>
+                <th className="text-left px-3 py-1.5 font-normal" style={{ letterSpacing: '0.25em' }}>
+                  NAME
+                </th>
+                <th className="text-left px-3 py-1.5 font-normal" style={{ letterSpacing: '0.25em' }}>
+                  EMAIL
+                </th>
+                <th className="text-left px-3 py-1.5 font-normal" style={{ letterSpacing: '0.25em' }}>
+                  USE CASE
+                </th>
+                <th className="text-left px-3 py-1.5 font-normal" style={{ letterSpacing: '0.25em' }}>
+                  WHEN
+                </th>
+                <th className="text-left px-3 py-1.5 font-normal" style={{ letterSpacing: '0.25em' }}>
+                  IP
+                </th>
+                <th className="text-right px-3 py-1.5 font-normal" style={{ letterSpacing: '0.25em' }}>
+                  ACT
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {accessRequests.map((req) => {
+                const ageSec = Math.max(
+                  0,
+                  (Date.now() - new Date(req.requested_at).getTime()) / 1000,
+                );
+                return (
+                  <tr key={req.id} style={{ borderTop: '1px solid rgba(125, 211, 252, 0.05)' }}>
+                    <td className="px-3 py-2" style={{ color: '#E0F2FE', letterSpacing: '0.04em' }}>
+                      {req.name}
+                    </td>
+                    <td className="px-3 py-2" style={{ color: '#BAE6FD', letterSpacing: '0.02em' }}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Mail className="h-2.5 w-2.5" />
+                        {req.email}
+                      </span>
+                    </td>
+                    <td
+                      className="px-3 py-2"
+                      style={{
+                        color: '#94A3B8',
+                        maxWidth: 320,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={req.use_case}
+                    >
+                      {req.use_case}
+                    </td>
+                    <td className="px-3 py-2" style={{ color: '#94A3B8' }}>
+                      {formatAge(ageSec)} ago
+                    </td>
+                    <td className="px-3 py-2" style={{ color: '#94A3B8' }}>
+                      {req.ip_address || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <span className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => approveRequest(req.id)}
+                          className="px-1.5 py-0.5 inline-flex items-center gap-1 rounded-sm border"
+                          style={{
+                            borderColor: 'rgba(134, 239, 172, 0.45)',
+                            color: '#86EFAC',
+                            letterSpacing: '0.18em',
+                            fontSize: 9,
+                          }}
+                          title="Approve — issues a fresh pair code for this requester"
+                        >
+                          <CheckCircle2 className="h-2.5 w-2.5" /> OK
+                        </button>
+                        <button
+                          onClick={() => denyRequest(req.id, req.email)}
+                          className="px-1.5 py-0.5 inline-flex items-center gap-1 rounded-sm border"
+                          style={{
+                            borderColor: 'rgba(248, 113, 113, 0.4)',
+                            color: '#F87171',
+                            letterSpacing: '0.18em',
+                            fontSize: 9,
+                          }}
+                          title="Deny — hard-deletes the request"
+                        >
+                          <Trash2 className="h-2.5 w-2.5" /> NO
+                        </button>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── Approved-code reveal modal (inline) ─────────────────── */}
+      {approvedCode && (
+        <div
+          className="rounded border overflow-hidden animate-fade-in"
+          style={{
+            background: 'rgba(12, 16, 24, 0.95)',
+            borderColor: 'rgba(134, 239, 172, 0.55)',
+            borderLeft: '3px solid #86EFAC',
+          }}
+        >
+          <div
+            className="px-3 py-2 border-b text-[10px] flex items-center justify-between"
+            style={{
+              borderColor: 'rgba(125, 211, 252, 0.1)',
+              letterSpacing: '0.3em',
+              color: '#86EFAC',
+              background: 'rgba(134, 239, 172, 0.06)',
+            }}
+          >
+            <span>PNL-APPROVED · PAIR CODE FOR {approvedCode.email.toUpperCase()}</span>
+            <button
+              onClick={() => setApprovedCode(null)}
+              style={{ color: '#94A3B8' }}
+              title="Dismiss (operator already forwarded the code)"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="px-6 py-5 flex flex-col items-center gap-3">
+            <div
+              className="text-5xl tabular-nums"
+              style={{
+                color: '#E0F2FE',
+                letterSpacing: '0.45em',
+                fontWeight: 600,
+                textShadow: '0 0 12px rgba(134, 239, 172, 0.35)',
+              }}
+            >
+              {approvedCode.pair_code}
+            </div>
+            <button
+              onClick={copyApprovedCode}
+              className="px-3 py-1.5 text-[10px] inline-flex items-center gap-1.5 rounded-sm border"
+              style={{
+                background: approvedCopied ? 'rgba(134, 239, 172, 0.12)' : 'rgba(125, 211, 252, 0.06)',
+                borderColor: approvedCopied ? '#86EFAC' : 'rgba(125, 211, 252, 0.3)',
+                color: approvedCopied ? '#86EFAC' : '#BAE6FD',
+                letterSpacing: '0.25em',
+              }}
+            >
+              {approvedCopied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {approvedCopied ? 'COPIED' : 'COPY'}
+            </button>
+            <p className="text-[10px] text-center" style={{ color: '#94A3B8', letterSpacing: '0.05em' }}>
+              ▸ Forward this code to <strong>{approvedCode.name}</strong> at{' '}
+              <strong>{approvedCode.email}</strong>. It expires in ~5 minutes.
+            </p>
+          </div>
         </div>
       )}
 

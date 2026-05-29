@@ -8,6 +8,7 @@
 //! - Header sanitization (handled by axum/hyper)
 
 pub mod api;
+pub mod api_access_requests;
 pub mod api_pairing;
 #[cfg(feature = "plugins-wasm")]
 pub mod api_plugins;
@@ -505,6 +506,8 @@ pub struct AppState {
     pub device_registry: Option<Arc<api_pairing::DeviceRegistry>>,
     /// Pending pairing request store
     pub pending_pairings: Option<Arc<api_pairing::PairingStore>>,
+    /// Public access-request queue (invite-only public onboarding)
+    pub access_request_registry: Option<Arc<api_access_requests::AccessRequestRegistry>>,
     /// Shared canvas store for Live Canvas (A2UI) system
     pub canvas_store: CanvasStore,
     /// WebAuthn state for hardware key authentication (optional, requires `webauthn` feature)
@@ -1002,6 +1005,14 @@ pub async fn run_gateway(
     } else {
         None
     };
+    // Public access-request queue lives alongside the pairing store. We
+    // create the SQLite file unconditionally — the unauth POST endpoint
+    // is harmless when pairing isn't required (it just queues entries
+    // nobody will look at), and the small disk cost beats the field
+    // being `None` and accidentally returning 503 to legitimate clients.
+    let access_request_registry = Some(Arc::new(api_access_requests::AccessRequestRegistry::new(
+        &config.workspace_dir,
+    )));
 
     let state = AppState {
         config: config_state,
@@ -1036,6 +1047,7 @@ pub async fn run_gateway(
         session_queue: Arc::new(session_queue::SessionActorQueue::new(8, 30, 600)),
         device_registry,
         pending_pairings,
+        access_request_registry,
         path_prefix: path_prefix.unwrap_or("").to_string(),
         web_dist_dir,
         canvas_store,
@@ -1157,6 +1169,23 @@ pub async fn run_gateway(
         .route(
             "/api/devices/{id}/token/rotate",
             post(api_pairing::rotate_token),
+        )
+        // ── Public access-request flow (invite-only public onboarding) ──
+        .route(
+            "/api/access-request",
+            post(api_access_requests::handle_request_access),
+        )
+        .route(
+            "/api/access-requests",
+            get(api_access_requests::handle_list_requests),
+        )
+        .route(
+            "/api/access-requests/{id}/approve",
+            post(api_access_requests::handle_approve_request),
+        )
+        .route(
+            "/api/access-requests/{id}/deny",
+            post(api_access_requests::handle_deny_request),
         )
         // ── Workspace artifacts (deliverables browser) ──
         .route(
@@ -2891,6 +2920,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]
@@ -2965,6 +2995,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]
@@ -3365,6 +3396,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]
@@ -3447,6 +3479,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]
@@ -3541,6 +3574,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]
@@ -3607,6 +3641,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]
@@ -3678,6 +3713,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]
@@ -3754,6 +3790,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]
@@ -3827,6 +3864,7 @@ mod tests {
             )),
             device_registry: None,
             pending_pairings: None,
+            access_request_registry: None,
             canvas_store: CanvasStore::new(),
             cancel_tokens: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "webauthn")]

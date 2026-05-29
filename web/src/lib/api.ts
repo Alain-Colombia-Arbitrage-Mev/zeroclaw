@@ -12,6 +12,7 @@ import type {
   Session,
   ChannelDetail,
   SessionMessagesResponse,
+  AccessRequest,
 } from '../types/api';
 import { clearToken, getToken, setToken } from './auth';
 import { apiOrigin, basePath } from './basePath';
@@ -648,4 +649,69 @@ export function buildKnowledgeGraph(): Promise<KnowledgeGraphBuildResult> {
   return apiFetch<KnowledgeGraphBuildResult>('/api/knowledge/graph/build', {
     method: 'POST',
   });
+}
+
+// ---------------------------------------------------------------------------
+// Public access-request flow (invite-only public onboarding)
+// ---------------------------------------------------------------------------
+
+export interface AccessRequestSubmission {
+  request_id: string;
+  created_at: string;
+  message: string;
+}
+
+/**
+ * Submit a public access request. Unauthenticated — anyone reaching the
+ * dashboard URL can call this. Rate-limited per source IP server-side.
+ */
+export async function requestAccess(
+  name: string,
+  email: string,
+  useCase: string,
+): Promise<AccessRequestSubmission> {
+  const response = await fetch(`${apiOrigin}${basePath}/api/access-request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, use_case: useCase }),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Request failed (${response.status}): ${text || response.statusText}`);
+  }
+  return response.json() as Promise<AccessRequestSubmission>;
+}
+
+/** List pending access requests. Operator (paired) only. */
+export function listAccessRequests(): Promise<AccessRequest[]> {
+  return apiFetch<{ requests: AccessRequest[]; count: number }>(
+    '/api/access-requests',
+  ).then((data) => data.requests ?? []);
+}
+
+export interface AccessRequestApproval {
+  request_id: string;
+  email: string;
+  name: string;
+  pair_code: string;
+}
+
+/**
+ * Approve a pending request. Server generates a fresh pair code and removes
+ * the request from the queue; the operator manually forwards the code to
+ * the requester (no email integration in this iteration).
+ */
+export function approveAccessRequest(id: string): Promise<AccessRequestApproval> {
+  return apiFetch<AccessRequestApproval>(
+    `/api/access-requests/${encodeURIComponent(id)}/approve`,
+    { method: 'POST' },
+  );
+}
+
+/** Deny (hard-delete) a pending request. */
+export function denyAccessRequest(id: string): Promise<void> {
+  return apiFetch<unknown>(
+    `/api/access-requests/${encodeURIComponent(id)}/deny`,
+    { method: 'POST' },
+  ).then(() => undefined);
 }

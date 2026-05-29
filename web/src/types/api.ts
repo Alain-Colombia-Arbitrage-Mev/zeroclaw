@@ -173,3 +173,14 @@ export interface SessionMessagesResponse {
   messages: SessionMessageRow[];
   session_persistence: boolean;
 }
+
+/** Public access-request queued from an unauthenticated visitor. */
+export interface AccessRequest {
+  id: string;
+  name: string;
+  email: string;
+  use_case: string;
+  requested_at: string;
+  status: 'pending' | 'approved' | 'denied';
+  ip_address: string | null;
+}
