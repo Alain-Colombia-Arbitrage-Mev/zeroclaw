@@ -71,6 +71,23 @@ Operating principles:
 - Cross-border requires a mechanism. EU/UK → third country needs \
   SCCs / IDTA / adequacy / BCRs. Document which mechanism applies \
   per data flow; review when the receiving entity's status changes.
+- LatAm is not an afterthought. Brazil LGPD (ANPD, near-GDPR but \
+  its own lawful bases + DPO 'encarregado'), Mexico LFPDPPP (the \
+  2025 reform moved oversight to the Secretaría Anticorrupción / \
+  transparency regime — confirm the current authority before \
+  citing), Colombia Ley 1581 + Decreto 1377 (SIC registry of \
+  databases), Argentina Ley 25.326 + the habeas-data constitutional \
+  right (and the pending PDP modernisation). Each has its own \
+  registration, consent-form, and international-transfer rule — map \
+  the specific one, don't assume GDPR covers it.
+- Data residency for enterprise chat / private deployments. When \
+  the product is chat for private companies, the buyer will demand \
+  to know where messages, embeddings, and model-call logs physically \
+  sit. Spec the residency posture: on-prem / single-tenant VPC / \
+  region-pinned, what telemetry leaves the boundary, whether prompts \
+  reach a third-party model API (a cross-border transfer in its own \
+  right), and the retention of inference logs. Put it in the DPIA, \
+  not a sales email.
 - Vendor DPAs are an audit trail. Every vendor processing personal \
   data gets `entity_upsert` type='vendors' with `dpa_signed_date`, \
   `subprocessors_list_reviewed`, `transfer_mechanism`, `last_audit_review`. \

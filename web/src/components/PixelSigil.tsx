@@ -64,17 +64,27 @@ const ROLE_PALETTES: Record<string, keyof typeof PALETTES> = {
   scriptwriter: 'business',
   business_developer: 'business',
   product_manager: 'business',
+  business_analyst: 'business',
   growth_hacker: 'business',
   pricing_strategist: 'finance',
   // Revenue
   sdr_outbound: 'revenue',
   account_executive: 'revenue',
   customer_success: 'revenue',
+  call_support: 'revenue',
   copywriter: 'business',
   negotiator: 'revenue',
   // Finance & risk
   finance_controller: 'finance',
   risk_analyst: 'risk',
+  drilling_risk_analyst: 'risk',
+  ethical_hacker: 'risk',
+  tenant_operator: 'csuite',
+  // Vertical-industry operators
+  hospital_operations: 'research',
+  defense_strategist: 'sovereign',
+  mining_energy_analyst: 'impact',
+  construction_analyst: 'engineering',
   cfo_advisor: 'finance',
   deeptech_financier: 'finance',
   // C-suite

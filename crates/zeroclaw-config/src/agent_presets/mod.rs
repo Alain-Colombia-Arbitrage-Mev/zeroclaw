@@ -59,8 +59,10 @@
 mod account_executive;
 mod adr_writer;
 mod architect;
+mod business_analyst;
 mod business_developer;
 mod capex_controller;
+mod call_support;
 mod ceo_advisor;
 mod cfo_advisor;
 mod chro;
@@ -69,6 +71,7 @@ mod coder;
 mod common;
 mod community_growth_specialist;
 mod competitor_analyst;
+mod construction_analyst;
 mod content_creator;
 mod content_strategist;
 mod copywriter;
@@ -79,11 +82,14 @@ mod customer_success;
 mod data_analyst;
 mod db_designer;
 mod deeptech_financier;
+mod defense_strategist;
 mod designer;
 mod devops;
+mod drilling_risk_analyst;
 mod docs;
 mod energy_grid_strategist;
 mod esg_energy_counsel;
+mod ethical_hacker;
 mod finance_controller;
 mod fintech_counsel;
 mod forensic_auditor;
@@ -91,6 +97,7 @@ mod fundraise_captain;
 mod general_counsel;
 mod geospatial_analyst;
 mod growth_hacker;
+mod hospital_operations;
 mod idea_generator;
 mod idea_validator;
 mod internal_auditor;
@@ -101,6 +108,7 @@ mod legal_compliance;
 mod market_researcher;
 mod market_sentiment_analyst;
 mod marketing;
+mod mining_energy_analyst;
 mod negotiator;
 mod ngo_architect;
 mod personal_brand_strategist;
@@ -121,6 +129,7 @@ mod server_architect;
 mod sovereign_advisor;
 mod support_agent;
 mod tax_advisor;
+mod tenant_operator;
 mod tester;
 mod treasurer;
 mod valuation_analyst;
@@ -129,7 +138,9 @@ mod value_creation_strategist;
 pub use self::account_executive::account_executive_preset;
 pub use self::adr_writer::adr_writer_preset;
 pub use self::architect::architect_preset;
+pub use self::business_analyst::business_analyst_preset;
 pub use self::business_developer::business_developer_preset;
+pub use self::call_support::call_support_preset;
 pub use self::capex_controller::capex_controller_preset;
 pub use self::ceo_advisor::ceo_advisor_preset;
 pub use self::cfo_advisor::cfo_advisor_preset;
@@ -138,6 +149,7 @@ pub use self::cicd::cicd_preset;
 pub use self::coder::coder_preset;
 pub use self::community_growth_specialist::community_growth_specialist_preset;
 pub use self::competitor_analyst::competitor_analyst_preset;
+pub use self::construction_analyst::construction_analyst_preset;
 pub use self::content_creator::content_creator_preset;
 pub use self::content_strategist::content_strategist_preset;
 pub use self::copywriter::copywriter_preset;
@@ -148,11 +160,14 @@ pub use self::customer_success::customer_success_preset;
 pub use self::data_analyst::data_analyst_preset;
 pub use self::db_designer::db_designer_preset;
 pub use self::deeptech_financier::deeptech_financier_preset;
+pub use self::defense_strategist::defense_strategist_preset;
 pub use self::designer::designer_preset;
 pub use self::devops::devops_preset;
 pub use self::docs::docs_preset;
+pub use self::drilling_risk_analyst::drilling_risk_analyst_preset;
 pub use self::energy_grid_strategist::energy_grid_strategist_preset;
 pub use self::esg_energy_counsel::esg_energy_counsel_preset;
+pub use self::ethical_hacker::ethical_hacker_preset;
 pub use self::finance_controller::finance_controller_preset;
 pub use self::fintech_counsel::fintech_counsel_preset;
 pub use self::forensic_auditor::forensic_auditor_preset;
@@ -160,6 +175,7 @@ pub use self::fundraise_captain::fundraise_captain_preset;
 pub use self::general_counsel::general_counsel_preset;
 pub use self::geospatial_analyst::geospatial_analyst_preset;
 pub use self::growth_hacker::growth_hacker_preset;
+pub use self::hospital_operations::hospital_operations_preset;
 pub use self::idea_generator::idea_generator_preset;
 pub use self::idea_validator::idea_validator_preset;
 pub use self::internal_auditor::internal_auditor_preset;
@@ -170,6 +186,7 @@ pub use self::legal_compliance::legal_compliance_preset;
 pub use self::market_researcher::market_researcher_preset;
 pub use self::market_sentiment_analyst::market_sentiment_analyst_preset;
 pub use self::marketing::marketing_preset;
+pub use self::mining_energy_analyst::mining_energy_analyst_preset;
 pub use self::negotiator::negotiator_preset;
 pub use self::ngo_architect::ngo_architect_preset;
 pub use self::personal_brand_strategist::personal_brand_strategist_preset;
@@ -190,6 +207,7 @@ pub use self::server_architect::server_architect_preset;
 pub use self::sovereign_advisor::sovereign_advisor_preset;
 pub use self::support_agent::support_agent_preset;
 pub use self::tax_advisor::tax_advisor_preset;
+pub use self::tenant_operator::tenant_operator_preset;
 pub use self::tester::tester_preset;
 pub use self::treasurer::treasurer_preset;
 pub use self::valuation_analyst::valuation_analyst_preset;
@@ -321,6 +339,30 @@ mod tests {
                 "market_sentiment_analyst",
                 market_sentiment_analyst_preset("openrouter", "x"),
             ),
+            (
+                "drilling_risk_analyst",
+                drilling_risk_analyst_preset("openrouter", "x"),
+            ),
+            ("business_analyst", business_analyst_preset("openrouter", "x")),
+            ("call_support", call_support_preset("openrouter", "x")),
+            ("tenant_operator", tenant_operator_preset("openrouter", "x")),
+            (
+                "hospital_operations",
+                hospital_operations_preset("openrouter", "x"),
+            ),
+            (
+                "defense_strategist",
+                defense_strategist_preset("openrouter", "x"),
+            ),
+            (
+                "mining_energy_analyst",
+                mining_energy_analyst_preset("openrouter", "x"),
+            ),
+            (
+                "construction_analyst",
+                construction_analyst_preset("openrouter", "x"),
+            ),
+            ("ethical_hacker", ethical_hacker_preset("openrouter", "x")),
         ]
     }
 

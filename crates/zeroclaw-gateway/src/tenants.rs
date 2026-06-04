@@ -98,7 +98,7 @@ impl TenantCategory {
             TenantCategory::Energy => &[
                 "energy_grid_strategist", "esg_energy_counsel",
                 "geospatial_analyst", "deeptech_financier",
-                "risk_analyst", "legal_compliance",
+                "risk_analyst", "drilling_risk_analyst", "legal_compliance",
                 "finance_controller", "cfo_advisor", "ceo_advisor",
                 "business_developer", "sovereign_advisor",
                 "market_researcher", "data_analyst", "forensic_auditor",
@@ -228,12 +228,14 @@ impl TenantActivity {
                 "security",
                 "fintech_counsel",
                 "risk_analyst",
+                "defense_strategist",
             ],
             TenantActivity::Regulated => &[
                 "legal_compliance",
                 "fintech_counsel",
                 "security",
                 "risk_analyst",
+                "drilling_risk_analyst",
                 "esg_energy_counsel",
             ],
             TenantActivity::Hardware => &[

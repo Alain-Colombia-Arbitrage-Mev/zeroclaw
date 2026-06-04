@@ -66,6 +66,8 @@ pub use zeroclaw_tools::file_edit::FileEditTool;
 pub use zeroclaw_tools::file_write::FileWriteTool;
 pub use zeroclaw_tools::gemini_cli::GeminiCliTool;
 pub use zeroclaw_tools::git_operations::GitOperationsTool;
+pub use zeroclaw_tools::security_scan::SecurityScanTool;
+pub use zeroclaw_tools::voice_call::VoiceCallTool;
 pub use zeroclaw_tools::glob_search::GlobSearchTool;
 pub use zeroclaw_tools::google_workspace::GoogleWorkspaceTool;
 pub use zeroclaw_tools::graphify::GraphifyTool;
@@ -378,6 +380,10 @@ pub fn all_tools_with_runtime(
             security.clone(),
             workspace_dir.to_path_buf(),
         )),
+        Arc::new(SecurityScanTool::new(
+            security.clone(),
+            workspace_dir.to_path_buf(),
+        )),
         Arc::new(PushoverTool::new(
             security.clone(),
             workspace_dir.to_path_buf(),
@@ -539,6 +545,16 @@ pub fn all_tools_with_runtime(
             );
         } else {
             tool_arcs.push(Arc::new(NotionTool::new(notion_api_key, security.clone())));
+        }
+    }
+
+    // Voice-call tool (conditionally registered when a telephony
+    // provider is configured and enabled). Gives call-handling agents
+    // (call_support) a real outbound-dial capability; the tool itself
+    // hard-gates on Full autonomy and honours require_outbound_approval.
+    if let Some(voice_cfg) = root_config.channels.voice_call.clone() {
+        if voice_cfg.enabled {
+            tool_arcs.push(Arc::new(VoiceCallTool::new(security.clone(), voice_cfg)));
         }
     }
 

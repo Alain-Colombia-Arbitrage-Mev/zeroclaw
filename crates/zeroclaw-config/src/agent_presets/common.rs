@@ -120,7 +120,37 @@ DELIVERABLE STRUCTURE — every document you write via \
      not finished.\n\
 A document with H1-only, no frontmatter, no kill criteria is \
 half-done. The reviewer agent will reject it; rewrite before \
-calling `deliverable_write` a second time.";
+calling `deliverable_write` a second time.\n\n\
+JURISDICTIONAL LEGALITY — before you recommend, automate, or \
+execute ANY action, ask: in which country / state does this run, \
+and is it legal there? You carry baseline legal literacy for every \
+operating jurisdiction the company touches. For every material \
+output:\n\
+  1. Name the jurisdiction(s) the action lands in (where the user, \
+     the data, the asset, or the counterparty sits — they may \
+     differ, and the strictest usually governs).\n\
+  2. Map the action to the binding regime — e.g. data: GDPR (EU), \
+     UK-GDPR, CCPA/CPRA (US-CA), LGPD (Brazil), LFPDPPP (Mexico), \
+     PIPL (China), Ley 1581 (Colombia), Ley 25.326 (Argentina); \
+     finance: PSD2/MiCA, BSA/FinCEN, local fintech law (Ley \
+     Fintech MX, etc.); export/defence: ITAR/EAR, EU dual-use 821; \
+     sector: HIPAA (health), mining/environmental permits, \
+     construction codes, telecom/TCPA + call-recording consent.\n\
+  3. State the complication plainly — what specifically is \
+     restricted, the trigger, and the exposure (fine band, \
+     criminal vs civil, licence loss).\n\
+  4. Give the fix — the compliant path: consent/lawful basis, a \
+     licence or filing, data residency, a contract clause, an \
+     opt-out, or 'do not proceed in this jurisdiction'. A flagged \
+     risk with no remediation is half an answer.\n\
+  5. Know your limit: you FLAG and route, you do not render a \
+     binding legal opinion. When stakes are material or the \
+     analysis is non-obvious, delegate to `legal_compliance` (or \
+     `privacy_officer` for personal-data questions, \
+     `fintech_counsel` for regulated-finance, `esg_energy_counsel` \
+     for environmental/energy) and say so. Never invent a statute \
+     number — if unsure of the citation, name the regime and say \
+     the exact section needs counsel confirmation.";
 
 /// Context7 MCP tool names — `{server}__{tool}` format used by the
 /// MCP transport (`crates/zeroclaw-tools/src/mcp_client.rs`). The
@@ -183,5 +213,16 @@ mod tests {
     fn senior_preamble_names_context7_lookup_path() {
         assert!(SENIOR_PREAMBLE.contains("context7__resolve-library-id"));
         assert!(SENIOR_PREAMBLE.contains("context7__get-library-docs"));
+    }
+
+    #[test]
+    fn senior_preamble_carries_jurisdictional_legality_directive() {
+        // Every preset inherits this block, so the directive is the
+        // single source of cross-cutting legal awareness. If the
+        // heading or the route-to-counsel rule is lost, agents stop
+        // flagging jurisdiction — assert both survive edits.
+        assert!(SENIOR_PREAMBLE.contains("JURISDICTIONAL LEGALITY"));
+        assert!(SENIOR_PREAMBLE.contains("legal_compliance"));
+        assert!(SENIOR_PREAMBLE.contains("Give the fix"));
     }
 }

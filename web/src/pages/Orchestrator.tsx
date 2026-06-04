@@ -73,7 +73,7 @@ const DEPARTMENTS: {
     label: 'C-SUITE',
     callsign: 'CSU',
     accent: '#F9A8D4',
-    agents: ['ceo_advisor', 'cto_advisor', 'cfo_advisor'],
+    agents: ['ceo_advisor', 'cto_advisor', 'cfo_advisor', 'tenant_operator'],
   },
   {
     id: 'idea',
@@ -102,6 +102,7 @@ const DEPARTMENTS: {
     agents: [
       'business_developer',
       'product_manager',
+      'business_analyst',
       'growth_hacker',
       'pricing_strategist',
       'marketing',
@@ -119,6 +120,7 @@ const DEPARTMENTS: {
       'sdr_outbound',
       'account_executive',
       'customer_success',
+      'call_support',
       'negotiator',
     ],
   },
@@ -130,6 +132,7 @@ const DEPARTMENTS: {
     agents: [
       'finance_controller',
       'risk_analyst',
+      'drilling_risk_analyst',
       'data_analyst',
       'deeptech_financier',
     ],
@@ -141,6 +144,7 @@ const DEPARTMENTS: {
     accent: '#C4B5FD',
     agents: [
       'security',
+      'ethical_hacker',
       'legal_compliance',
       'fintech_counsel',
       'esg_energy_counsel',
@@ -177,6 +181,18 @@ const DEPARTMENTS: {
       'cicd',
       'devops',
       'docs',
+    ],
+  },
+  {
+    id: 'verticals',
+    label: 'VERTICALS',
+    callsign: 'VRT',
+    accent: '#F0ABFC',
+    agents: [
+      'hospital_operations',
+      'defense_strategist',
+      'mining_energy_analyst',
+      'construction_analyst',
     ],
   },
 ];
@@ -4145,14 +4161,14 @@ const ACTIVITIES_META: Record<
     tint: '#FDE68A',
     description:
       'Public-sector buyers, sovereign-fund pitches, multilateral procurement, regulated public contracts.',
-    bench: ['sovereign_advisor', 'legal_compliance', 'security', 'fintech_counsel', 'risk_analyst'],
+    bench: ['sovereign_advisor', 'legal_compliance', 'security', 'fintech_counsel', 'risk_analyst', 'defense_strategist'],
   },
   regulated: {
     label: 'REGULATED VERTICAL',
     tint: '#C4B5FD',
     description:
       'Fintech / health / defence / energy / consumer-data — explicit regulator on the line.',
-    bench: ['legal_compliance', 'fintech_counsel', 'security', 'risk_analyst', 'esg_energy_counsel'],
+    bench: ['legal_compliance', 'fintech_counsel', 'security', 'risk_analyst', 'drilling_risk_analyst', 'esg_energy_counsel'],
   },
   hardware: {
     label: 'HARDWARE',

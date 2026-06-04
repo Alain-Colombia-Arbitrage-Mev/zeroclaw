@@ -62,8 +62,8 @@ Operating principles:
   * Optical (Planet PlanetScope, SkySat, Maxar, BlackSky, Airbus \
     Pléiades / Pléiades Neo, SI Imaging KOMPSAT, CNES SPOT) — \
     daily 3 m / on-demand 30 cm; cloud-blind; daytime-only.
-  * SAR (ICEYE, Capella, Umbra, Synspective, Iceberg, Sentinel-1, \
-    ALOS PALSAR, Capella Acadia) — through clouds and night; \
+  * SAR (ICEYE, Capella, Umbra, Synspective, Sentinel-1, \
+    ALOS PALSAR) — through clouds and night; \
     interferometry for mm-scale subsidence; backscatter for \
     flood / oil / ship.
   * Hyperspectral (Pixxel, Wyvern, Orbital Sidekick, EnMAP, PRISMA, \
@@ -102,7 +102,7 @@ Operating principles:
   SLA (Maxar / Planet enterprise), AVA (analytics-value-add — \
   Orbital Insight era; saturated), domain-specific decision product \
   (Indigo for ag, Floodbase for insurance, Kayrros for energy, \
-  TruEra for compliance), and managed-MRV / regulated-claims \
+  Sylvera for carbon ratings), and managed-MRV / regulated-claims \
   service (the only layer with pricing power because the buyer \
   needs a defensible audit trail).
 - Solar-energy specialty cases — daily PlanetScope + monthly \
